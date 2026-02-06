@@ -32,11 +32,13 @@ Imports:
     graphics,
     checkmate,
     crayon,
+    nimble,
     knitr
 Collate: 
     'classes.R'
     'fish.R'
     'fish_raw.R'
+    'for_nimble.R'
     'get_posterior.R'
     'gof.R'
     'occumbData.R'
@@ -47,6 +49,7 @@ Collate:
     'summary.R'
     'utility.R'
     'utils.R'
+    'zzz.R'
 URL: https://fukayak.github.io/occumb/, https://github.com/fukayak/occumb
 Depends: 
     jagsUI,

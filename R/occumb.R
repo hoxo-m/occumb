@@ -103,6 +103,7 @@ setClass("occumbFit", slots = c(fit = "jagsUI",
 #' @param n.thin Thinning rate. Must be a positive integer.
 #' @param n.iter Total number of iterations per chain (including burn-in).
 #' @param parallel If TRUE, run MCMC chains in parallel on multiple CPU cores.
+#' @param engine description
 #' @param ... Additional arguments passed to \code{\link[jagsUI]{jags}()} function.
 #' @return  An S4 object of the \code{occumbFit} class containing the results of
 #'          the model fitting and the supplied dataset.
@@ -162,7 +163,10 @@ occumb <- function(formula_phi = ~ 1,
                    n.thin = 10,
                    n.iter = 20000,
                    parallel = FALSE,
+                   engine = c("JAGS", "NIMBLE"),
                    ...) {
+  # Check arguments
+  engine <- match.arg(engine)
 
   # Validate arguments
   check_args_occumb(data, formula_phi, formula_theta, formula_psi,
@@ -192,42 +196,101 @@ occumb <- function(formula_phi = ~ 1,
                                  margs$theta_shared,
                                  margs$psi_shared)
 
-  # Write model file
-  model <- tempfile()
-  writeLines(write_jags_model(margs$phi, margs$theta, margs$psi,
-                              margs$phi_shared,
-                              margs$theta_shared,
-                              margs$psi_shared), model)
-
-  # Run MCMC in JAGS
-  fit <- jagsUI::jags(dat, inits, params, model,
-                      n.chains = n.chains,
-                      n.adapt  = n.adapt,
-                      n.iter   = n.iter,
-                      n.burnin = n.burnin,
-                      n.thin   = n.thin,
-                      parallel = parallel, ...)
-
-  # Output
-  out <- methods::new(
-    "occumbFit", fit = fit, data = data,
-    occumb_args = list(
-      formula_phi          = paste(as.character(formula_phi),
-                                   collapse = " "),
-      formula_theta        = paste(as.character(formula_theta),
-                                   collapse = " "),
-      formula_psi          = paste(as.character(formula_psi),
-                                   collapse = " "),
-      formula_phi_shared   = paste(as.character(formula_phi_shared),
-                                   collapse = " "),
-      formula_theta_shared = paste(as.character(formula_theta_shared),
-                                   collapse = " "),
-      formula_psi_shared   = paste(as.character(formula_psi_shared),
-                                   collapse = " "),
-      prior_prec           = prior_prec,
-      prior_ulim           = prior_ulim
+  if (engine == "JAGS") {
+    # Write model file
+    model <- tempfile()
+    writeLines(write_jags_model(margs$phi, margs$theta, margs$psi,
+                                margs$phi_shared,
+                                margs$theta_shared,
+                                margs$psi_shared), model)
+    
+    # Run MCMC in JAGS
+    fit <- jagsUI::jags(dat, inits, params, model,
+                        n.chains = n.chains,
+                        n.adapt  = n.adapt,
+                        n.iter   = n.iter,
+                        n.burnin = n.burnin,
+                        n.thin   = n.thin,
+                        parallel = parallel, ...)
+    
+    # Output
+    out <- methods::new(
+      "occumbFit", fit = fit, data = data,
+      occumb_args = list(
+        formula_phi          = paste(as.character(formula_phi),
+                                     collapse = " "),
+        formula_theta        = paste(as.character(formula_theta),
+                                     collapse = " "),
+        formula_psi          = paste(as.character(formula_psi),
+                                     collapse = " "),
+        formula_phi_shared   = paste(as.character(formula_phi_shared),
+                                     collapse = " "),
+        formula_theta_shared = paste(as.character(formula_theta_shared),
+                                     collapse = " "),
+        formula_psi_shared   = paste(as.character(formula_psi_shared),
+                                     collapse = " "),
+        prior_prec           = prior_prec,
+        prior_ulim           = prior_ulim
+      )
     )
-  )
+  } else { # NIMBLE
+    # Write model code
+    list_covs_phi <- set_covariates(data, formula_phi, formula_phi_shared, "phi")
+    list_covs_theta <- set_covariates(data, formula_theta, formula_theta_shared, "theta")
+    list_covs_psi <- set_covariates(data, formula_psi, formula_psi_shared, "psi")
+    model_code <- write_nimble_model(margs$phi, margs$theta, margs$psi,
+                                     margs$phi_shared, margs$theta_shared, margs$psi_shared,
+                                     M_cov_phi = list_covs_phi$M, M_cov_phi_shared = list_covs_phi$M_shared,
+                                     M_cov_theta = list_covs_theta$M, M_cov_theta_shared = list_covs_theta$M_shared,
+                                     M_cov_psi = list_covs_psi$M, M_cov_psi_shared = list_covs_psi$M_shared)
+    model_code <- to_nimble_model_code(model_code)
+    
+    # Run MCMC in NIMBLE
+    dat2 <- dat[c("y", "cov_phi", "cov_theta", "cov_psi", "m_phi", "m_theta", "m_psi")]
+    const2 <- c(const[c("I", "J", "K", "N")], 
+                dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared", "prior_prec", "prior_ulim")],
+                len_m_phi = length(dat$m_phi), len_m_theta = length(dat$m_theta), len_m_psi = length(dat$m_psi))
+    const2 <- const2[!is.na(names(const2))]
+    dim_cov_phi <- if(is.null(dim(dat$cov_phi))) length(dat$cov_phi) else dim(dat$cov_phi)
+    dim_cov_theta <- if(is.null(dim(dat$cov_theta))) length(dat$cov_theta) else dim(dat$cov_theta)
+    dim_cov_psi <- if(is.null(dim(dat$cov_psi))) length(dat$cov_psi) else dim(dat$cov_psi)
+    dimensions <- list(
+      alpha = c(dat$I, length(dat$cov_phi)), cov_phi = dim_cov_phi,
+      beta = c(dat$I, length(dat$cov_theta)), cov_theta = dim_cov_theta,
+      gamma = c(dat$I, length(dat$cov_psi)), cov_psi = dim_cov_psi,
+      alpha_shared = list_covs_phi$M_shared,
+      beta_shared = list_covs_theta$M_shared,
+      gamma_shared = list_covs_psi$M_shared
+    )
+    dimensions <- Filter(Negate(is.null), dimensions)
+    fit <- nimble::nimbleMCMC(code = model_code, constants = const2, data = dat2,
+                              inits = inits(), dimensions = dimensions, 
+                              monitors = params, thin = n.thin, niter = n.iter, 
+                              nburnin = n.burnin, nchains = n.chains, ...)
+    
+    # Output
+    out <- fit
+    # out <- methods::new(
+    #   "occumbFit", fit = fit, data = data,
+    #   occumb_args = list(
+    #     formula_phi          = paste(as.character(formula_phi),
+    #                                  collapse = " "),
+    #     formula_theta        = paste(as.character(formula_theta),
+    #                                  collapse = " "),
+    #     formula_psi          = paste(as.character(formula_psi),
+    #                                  collapse = " "),
+    #     formula_phi_shared   = paste(as.character(formula_phi_shared),
+    #                                  collapse = " "),
+    #     formula_theta_shared = paste(as.character(formula_theta_shared),
+    #                                  collapse = " "),
+    #     formula_psi_shared   = paste(as.character(formula_psi_shared),
+    #                                  collapse = " "),
+    #     prior_prec           = prior_prec,
+    #     prior_ulim           = prior_ulim
+    #   )
+    # )
+  }
+
   out
 }
 
