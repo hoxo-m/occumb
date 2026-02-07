@@ -302,13 +302,13 @@ write_nimble_model <- function(phi, theta, psi,
   
   model <- c(model, "}", "")
   
-  model
+  to_nimble_model_code(model)
 }
 
 to_nimble_model_code <- function(model_code) {
   model_code[1] <- "{"
   model_code <- paste0(model_code, collapse = "\n")
-  model_code <- parse(text = model_code)[[1]]
+  model_code <- str2lang(model_code)
   model_code <- replace_calls(model_code, list(`dmnorm.vcov(Mu[1:M], Sigma)` = quote(dmnorm(Mu[1:M], cov = Sigma[1:M, 1:M]))))
   model_code <- replace_calls(model_code, list(`length(m_phi)` = quote(len_m_phi)))
   model_code <- replace_calls(model_code, list(`length(m_theta)` = quote(len_m_theta)))
@@ -336,3 +336,4 @@ replace_calls <- function(expr, rules) {
   }
   expr
 }
+
