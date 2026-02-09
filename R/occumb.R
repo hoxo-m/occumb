@@ -166,10 +166,8 @@ occumb <- function(formula_phi = ~ 1,
                    parallel = FALSE,
                    engine = c("JAGS", "NIMBLE"),
                    ...) {
-  # Check arguments
-  engine <- match.arg(engine)
-
   # Validate arguments
+  engine <- match.arg(engine)
   check_args_occumb(data, formula_phi, formula_theta, formula_psi,
                     formula_phi_shared, formula_theta_shared,
                     formula_psi_shared, prior_prec, prior_ulim)
@@ -223,6 +221,8 @@ occumb <- function(formula_phi = ~ 1,
                                      M_cov_phi = list_covs_phi$M, M_cov_phi_shared = list_covs_phi$M_shared,
                                      M_cov_theta = list_covs_theta$M, M_cov_theta_shared = list_covs_theta$M_shared,
                                      M_cov_psi = list_covs_psi$M, M_cov_psi_shared = list_covs_psi$M_shared)
+    model_code <- paste0(model_code, collapse = "\n")
+    model_code <- str2lang(model_code)
     
     # Run MCMC in NIMBLE
     const_nimble <- c(

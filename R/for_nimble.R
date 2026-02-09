@@ -5,8 +5,8 @@ write_nimble_model <- function(phi, theta, psi,
                                M_cov_theta, M_cov_theta_shared,
                                M_cov_psi, M_cov_psi_shared) {
   
-  model <- readLines(system.file("jags",
-                                 "occumb_template1.jags",
+  model <- readLines(system.file("nimble",
+                                 "occumb_template1.nimble",
                                  package = "occumb"))
 
   if (phi == "i")
@@ -20,8 +20,8 @@ write_nimble_model <- function(phi, theta, psi,
                "                r[i, j, k] ~ dgamma(phi[i, j, k], 1)")
   
   model <- c(model,
-             readLines(system.file("jags",
-                                   "occumb_template2.jags",
+             readLines(system.file("nimble",
+                                   "occumb_template2.nimble",
                                    package = "occumb")))
   
   if (theta == "i")
@@ -280,8 +280,8 @@ write_nimble_model <- function(phi, theta, psi,
   }
   
   model <- c(model,
-             readLines(system.file("jags",
-                                   "occumb_template5.jags",
+             readLines(system.file("nimble",
+                                   "occumb_template5.nimble",
                                    package = "occumb")))
   
   if (phi_shared)
@@ -302,19 +302,7 @@ write_nimble_model <- function(phi, theta, psi,
   
   model <- c(model, "}", "")
   
-  to_nimble_model_code(model)
-}
-
-to_nimble_model_code <- function(model_code) {
-  model_code[1] <- "{"
-  model_code <- paste0(model_code, collapse = "\n")
-  model_code <- str2lang(model_code)
-  model_code <- replace_calls(model_code, list(`dmnorm.vcov(Mu[1:M], Sigma)` = quote(dmnorm(Mu[1:M], cov = Sigma[1:M, 1:M]))))
-  model_code <- replace_calls(model_code, list(`length(m_phi)` = quote(len_m_phi)))
-  model_code <- replace_calls(model_code, list(`length(m_theta)` = quote(len_m_theta)))
-  model_code <- replace_calls(model_code, list(`length(m_psi)` = quote(len_m_psi)))
-  model_code <- replace_calls(model_code, list(`ifelse` = quote(.nimble_ifelse)))
-  model_code
+  model
 }
 
 replace_calls <- function(expr, rules) {
