@@ -165,7 +165,7 @@ write_nimble_model <- function(phi, theta, psi,
       }
       model <- c(model,
                  "        for (j in 1:J) {", paste0(
-                 "            logit(theta[i, j]) <- ", term1, " + " + term2),
+                 "            logit(theta[i, j]) <- ", term1, " + ", term2),
                  "        }")
     } else if (theta == "ijk") {
       if (M_cov_theta == 1) {
@@ -304,24 +304,3 @@ write_nimble_model <- function(phi, theta, psi,
   
   model
 }
-
-replace_calls <- function(expr, rules) {
-  if (is.call(expr)) {
-    if (as.character(expr[[1]]) %in% names(rules)) {
-      expr[[1]] <- rules[[as.character(expr[[1]])]]
-      return(expr)
-    }
-    
-    key <- paste(deparse(expr), collapse = "")
-    
-    if (key %in% names(rules)) {
-      return(rules[[key]])
-    }
-    
-    for (i in seq_along(expr)) {
-      expr[[i]] <- replace_calls(expr[[i]], rules)
-    }
-  }
-  expr
-}
-
