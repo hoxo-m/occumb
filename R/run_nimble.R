@@ -5,52 +5,52 @@ run_nimble <- function(data, inits = NULL, parameters.to.save, model.file,
                        n.cores = NULL, DIC = TRUE, store.data = FALSE, codaOnly = FALSE, 
                        seed = NULL, bugs.format = FALSE, verbose = TRUE, ...) {
   dat <- data
+  len_m_phi   <- length(dat$m_phi)
+  len_m_theta <- length(dat$m_theta)
+  len_m_psi   <- length(dat$m_psi)
+  pad2 <- function(x) if(length(x) == 1L) c(x, x) else x
+  dat$m_phi   <- pad2(dat$m_phi)
+  dat$m_theta <- pad2(dat$m_theta)
+  dat$m_psi   <- pad2(dat$m_psi)
   params <- parameters.to.save
   model_code <- model.file
+  
+  body <- body(inits)
+  n_rho <- as.integer(dat$M * (dat$M - 1) / 2)
+  body[[2]][names(body[[2]]) == "rho"][[1]] <- substitute(double(n), list(n = n_rho))
+  body(inits) <- body
   
   # Run MCMC in NIMBLE
   const_nimble <- c(
     const[c("I", "J", "K", "N")], 
-    dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared", "prior_prec", "prior_ulim")],
-    len_m_phi = length(dat$m_phi), len_m_theta = length(dat$m_theta), len_m_psi = length(dat$m_psi))
+    dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared", 
+          "m_phi", "m_theta", "m_psi", "prior_prec", "prior_ulim")],
+    M_phi = len_m_phi, M_theta = len_m_theta, M_psi = len_m_psi)
+  const_nimble$rho_index <- make_rho_index(const_nimble$M)
   const_nimble <- const_nimble[!is.na(names(const_nimble))]
   dat_nimble <- dat[c("y", "cov_phi", "cov_theta", "cov_psi", 
-                      "cov_phi_shared", "cov_theta_shared", "cov_psi_shared",
-                      "m_phi", "m_theta", "m_psi")]
+                      "cov_phi_shared", "cov_theta_shared", "cov_psi_shared")]
   dat_nimble <- dat_nimble[!is.na(names(dat_nimble))]
-  dim_cov_phi <- if(is.null(dim(dat$cov_phi))) length(dat$cov_phi) else dim(dat$cov_phi)
-  dim_cov_theta <- if(is.null(dim(dat$cov_theta))) length(dat$cov_theta) else dim(dat$cov_theta)
-  dim_cov_psi <- if(is.null(dim(dat$cov_psi))) length(dat$cov_psi) else dim(dat$cov_psi)
-  dimensions <- list(
-    alpha = c(dat$I, length(dat$cov_phi)), cov_phi = dim_cov_phi,
-    beta = c(dat$I, length(dat$cov_theta)), cov_theta = dim_cov_theta,
-    gamma = c(dat$I, length(dat$cov_psi)), cov_psi = dim_cov_psi,
-    alpha_shared = list_covs_phi$M_shared,
-    beta_shared = list_covs_theta$M_shared,
-    gamma_shared = list_covs_psi$M_shared,
-    cov_phi_shared = c(dat$I, list_covs_phi$M_shared),
-    cov_theta_shared = c(dat$I, list_covs_theta$M_shared),
-    cov_psi_shared = c(dat$I, list_covs_psi$M_shared)
-  )
-  dimensions <- Filter(Negate(is.null), dimensions)
   start_time <- Sys.time()
   if (parallel) {
     fit <- run_nimble_parallel(code = model_code, const = const_nimble, 
                                data = dat_nimble, inits = inits, 
-                               dimensions = dimensions, monitors = params,
+                               monitors = params,
                                n.iter = n.iter, n.burnin = n.burnin, 
                                n.thin = n.thin, n.chains = n.chains, 
                                n.cores = n.cores)
   } else {
     fit <- nimble::nimbleMCMC(code = model_code, constants = const_nimble, 
                               data = dat_nimble, inits = inits, 
-                              dimensions = dimensions, monitors = params,
+                              monitors = params,
                               thin = n.thin, niter = n.iter, nburnin = n.burnin,
                               nchains = n.chains, WAIC = FALSE, ...)
   }
   elapsed_mins <- round(as.numeric(Sys.time() - start_time, units = "mins"), 
                         digits = 3)
+  message("Summarizing MCMC samples...")
   fit <- nimbleSummary(fit)
+  message("Finished")
   rownames(fit$summary) <- gsub(pattern = "\\s", replacement = "",
                                 rownames(fit$summary))
   fit$parallel <- parallel
@@ -95,7 +95,7 @@ run_nimble_MCMC <- function(seed, code, const, data, inits, dimensions, monitors
   CMCMC <- nimble::compileNimble(MCMC)
   result <- nimble::runMCMC(CMCMC, niter = n.iter, nburnin = n.burnin,
                             thin = n.thin, nchains = n.chains, inits = inits,
-                            setSeed = seed)
+                            setSeed = seed, WAIC = FALSE)
   result
 }
 
@@ -157,12 +157,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_phi == 1) {
         term1 <- "alpha[i, 1] * cov_phi[1]"
       } else {
-        term1 <- "inprod(alpha[i, ], cov_phi[])"
+        term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[1:M_phi])"
       }
       if (M_cov_phi_shared == 1) {
         term2 <- "alpha_shared[1] * cov_phi_shared[i, 1]"
       } else {
-        term2 <- "inprod(alpha_shared[], cov_phi_shared[i, ])"
+        term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, 1:M_phi_shared])"
       }
       model <- c(model, paste0(
                  "        log(phi[i]) <- ", term1, " + ", term2))
@@ -170,12 +170,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_phi == 1) {
         term1 <- "alpha[i, 1] * cov_phi[j, 1]"
       } else {
-        term1 <- "inprod(alpha[i, ], cov_phi[j, ])"
+        term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[j, 1:M_phi])"
       }
       if (M_cov_phi_shared == 1) {
         term2 <- "alpha_shared[1] * cov_phi_shared[i, j, 1]"
       } else {
-        term2 <- "inprod(alpha_shared[], cov_phi_shared[i, j, ])"
+        term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, j, 1:M_phi_shared])"
       }
       model <- c(model, 
                  "        for (j in 1:J) {", paste0(
@@ -185,12 +185,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_phi == 1) {
         term1 <- "alpha[i, 1] * cov_phi[j, k, 1]"
       } else {
-        term1 <- "inprod(alpha[i, ], cov_phi[j, k, ])"
+        term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[j, k, 1:M_phi])"
       }
       if (M_cov_phi_shared == 1) {
         term2 <- "alpha_shared[1] * cov_phi_shared[i, j, k, 1]"
       } else {
-        term2 <- "inprod(alpha_shared[], cov_phi_shared[i, j, k, ])"
+        term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, j, k, 1:M_phi_shared])"
       }
       model <- c(model,
                  "        for (j in 1:J) {",
@@ -206,18 +206,18 @@ write_nimble_model <- function(phi, theta, psi,
                    "        log(phi[i]) <- alpha[i, 1] * cov_phi[1]")
       } else {
         model <- c(model,
-                   "        log(phi[i]) <- inprod(alpha[i, ], cov_phi[])")
+                   "        log(phi[i]) <- inprod(alpha[i, 1:M_phi], cov_phi[1:M_phi])")
       }
     } else if (phi == "ij") {
       if (M_cov_phi == 1) {
         model <- c(model,
                    "        for (j in 1:J) {",
-                   "            log(phi[i, j]) <- alpha[i, ] * cov_phi[j, 1]",
+                   "            log(phi[i, j]) <- alpha[i, 1] * cov_phi[j, 1]",
                    "        }")
       } else {
         model <- c(model,
                    "        for (j in 1:J) {",
-                   "            log(phi[i, j]) <- inprod(alpha[i, ], cov_phi[j, ])",
+                   "            log(phi[i, j]) <- inprod(alpha[i, 1:M_phi], cov_phi[j, 1:M_phi])",
                    "        }")
       }
     } else if (phi == "ijk") {
@@ -232,7 +232,7 @@ write_nimble_model <- function(phi, theta, psi,
         model <- c(model,
                    "        for (j in 1:J) {",
                    "            for (k in 1:K) {",
-                   "                log(phi[i, j, k]) <- inprod(alpha[i, ], cov_phi[j, k, ])",
+                   "                log(phi[i, j, k]) <- inprod(alpha[i, 1:M_phi], cov_phi[j, k, 1:M_phi])",
                    "            }",
                    "        }")
       }
@@ -244,12 +244,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_theta == 1) {
         term1 <- "beta[i, 1] * cov_theta[1]"
       } else {
-        term1 <- "inprod(beta[i, ], cov_theta[])"
+        term1 <- "inprod(beta[i, 1:M_theta], cov_theta[1:M_theta])"
       }
       if (M_cov_theta_shared == 1) {
         term2 <- "beta_shared[1] * cov_theta_shared[i, 1]"
       } else {
-        term2 <- "inprod(beta_shared[], cov_theta_shared[i, ])"
+        term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, 1:M_theta_shared])"
       }
       model <- c(model, paste0(
                  "        logit(theta[i]) <- ", term1, " + ", term2))
@@ -257,12 +257,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_theta == 1) {
         term1 <- "beta[i, 1] * cov_theta[j, 1]"
       } else {
-        term1 <- "inprod(beta[i, ], cov_theta[j, ])"
+        term1 <- "inprod(beta[i, 1:M_theta], cov_theta[j, 1:M_theta])"
       }
       if (M_cov_theta_shared == 1) {
         term2 <- "beta_shared[1] * cov_theta_shared[i, j, 1]"
       } else {
-        term2 <- "inprod(beta_shared[], cov_theta_shared[i, j, ])"
+        term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, j, 1:M_theta_shared])"
       }
       model <- c(model,
                  "        for (j in 1:J) {", paste0(
@@ -272,12 +272,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_theta == 1) {
         term1 <- "beta[i, 1] * cov_theta[j, k, 1]"
       } else {
-        term1 <- "inprod(beta[i, ], cov_theta[j, k, ])"
+        term1 <- "inprod(beta[i, 1:M_theta], cov_theta[j, k, 1:M_theta])"
       }
       if (M_cov_theta_shared == 1) {
         term2 <- "beta_shared[1] * cov_theta_shared[i, j, k, 1]"
       } else {
-        term2 <- "inprod(beta_shared[], cov_theta_shared[i, j, k, ])"
+        term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, j, k, 1:M_theta_shared])"
       }
       model <- c(model,
                  "        for (j in 1:J) {",
@@ -293,7 +293,7 @@ write_nimble_model <- function(phi, theta, psi,
                    "        logit(theta[i]) <- beta[i, 1] * cov_theta[1]")
       } else {
         model <- c(model,
-                   "        logit(theta[i]) <- inprod(beta[i, ], cov_theta[])")
+                   "        logit(theta[i]) <- inprod(beta[i, 1:M_theta], cov_theta[1:M_theta])")
       }
     if (theta == "ij")
       if (M_cov_theta == 1) {
@@ -304,7 +304,7 @@ write_nimble_model <- function(phi, theta, psi,
       } else {
         model <- c(model,
                    "        for (j in 1:J) {",
-                   "            logit(theta[i, j]) <- inprod(beta[i, ], cov_theta[j, ])",
+                   "            logit(theta[i, j]) <- inprod(beta[i, 1:M_theta], cov_theta[j, 1:M_theta])",
                    "        }")
       }
     if (theta == "ijk")
@@ -319,7 +319,7 @@ write_nimble_model <- function(phi, theta, psi,
         model <- c(model,
                    "        for (j in 1:J) {",
                    "            for (k in 1:K) {",
-                   "                logit(theta[i, j, k]) <- inprod(beta[i, ], cov_theta[j, k, ])",
+                   "                logit(theta[i, j, k]) <- inprod(beta[i, 1:M_theta], cov_theta[j, k, 1:M_theta])",
                    "            }",
                    "        }")
       }
@@ -330,12 +330,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_psi == 1) {
         term1 <- "gamma[i, 1] * cov_psi[1]"
       } else {
-        term1 <- "inprod(gamma[i, ], cov_psi[])"
+        term1 <- "inprod(gamma[i, 1:M_psi], cov_psi[1:M_psi])"
       }
       if (M_cov_psi_shared == 1) {
         term2 <- "gamma_shared[1] * cov_psi_shared[i, 1]"
       } else {
-        term2 <- "inprod(gamma_shared[], cov_psi_shared[i, ])"
+        term2 <- "inprod(gamma_shared[1:M_psi_shared], cov_psi_shared[i, 1:M_psi_shared])"
       }
       model <- c(model,
                  paste0("        logit(psi[i]) <- ", term1, " + ", term2))
@@ -344,12 +344,12 @@ write_nimble_model <- function(phi, theta, psi,
       if (M_cov_psi == 1) {
         term1 <- "gamma[i, 1] * cov_psi[j, 1]"
       } else {
-        term1 <- "inprod(gamma[i, ], cov_psi[j, ])"
+        term1 <- "inprod(gamma[i, 1:M_psi], cov_psi[j, 1:M_psi])"
       }
       if (M_cov_psi_shared == 1) {
         term2 <- "gamma_shared[1] * cov_psi_shared[i, j, 1]"
       } else {
-        term2 <- "inprod(gamma_shared[], cov_psi_shared[i, j, ])"
+        term2 <- "inprod(gamma_shared[1:M_psi_shared], cov_psi_shared[i, j, 1:M_psi_shared])"
       }
       model <- c(model,
                  "        for (j in 1:J) {", paste0(
@@ -363,7 +363,7 @@ write_nimble_model <- function(phi, theta, psi,
                    "        logit(psi[i]) <- gamma[i, 1] * cov_psi[1]")
       } else {
         model <- c(model,
-                   "        logit(psi[i]) <- inprod(gamma[i, ], cov_psi[])")
+                   "        logit(psi[i]) <- inprod(gamma[i, 1:M_psi], cov_psi[1:M_psi])")
       }
     } else if (psi == "ij") {
       if (M_cov_psi == 1) {
@@ -374,7 +374,7 @@ write_nimble_model <- function(phi, theta, psi,
       } else {
         model <- c(model,
                    "        for (j in 1:J) {",
-                   "            logit(psi[i, j]) <- inprod(gamma[i, ], cov_psi[j, ])",
+                   "            logit(psi[i, j]) <- inprod(gamma[i, 1:M_psi], cov_psi[j, 1:M_psi])",
                    "        }")
       }
     }
@@ -404,4 +404,16 @@ write_nimble_model <- function(phi, theta, psi,
   model <- c(model, "}", "")
   
   model
+}
+
+make_rho_index <- function(M) {
+  index <- matrix(0L, M, M)
+  ind <- 1L
+  for (m1 in 1:(M-1)) {
+    for (m2 in (m1+1):M) {
+      index[m1, m2] <- ind
+      ind <- ind + 1L
+    }
+  }
+  index
 }

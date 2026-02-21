@@ -1,11 +1,11 @@
 
-        for (m in 1:len_m_phi) {
+        for (m in 1:M_phi) {
             alpha[i, m] <- spec_eff[i, m_phi[m]]
         }
-        for (m in 1:len_m_theta) {
+        for (m in 1:M_theta) {
             beta[i, m]  <- spec_eff[i, m_theta[m]]
         }
-        for (m in 1:len_m_psi) {
+        for (m in 1:M_psi) {
             gamma[i, m] <- spec_eff[i, m_psi[m]]
         }
 
@@ -22,9 +22,9 @@
     }
     for (m1 in 1:(M - 1)) {
         for (m2 in (m1 + 1):M) {
-            Sigma[m1, m2] <- rho[m1, m2] * sigma[m1] * sigma[m2]
-            Sigma[m2, m1] <- rho[m1, m2] * sigma[m1] * sigma[m2]
-            rho[m1, m2] ~ dunif(-1, 1)
+            Sigma[m1, m2] <- rho[rho_index[m1, m2]] * sigma[m1] * sigma[m2]
+            Sigma[m2, m1] <- Sigma[m1, m2]
+            rho[rho_index[m1, m2]] ~ dunif(-1, 1)
         }
     }
 

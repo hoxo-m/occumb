@@ -70,12 +70,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_phi[i] == 1) {
           term1 <- "alpha[i, 1] * cov_phi[1]"
         } else {
-          term1 <- "inprod(alpha[i, ], cov_phi[])"
+          term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[1:M_phi])"
         }
         if (cases$M_cov_phi_shared[i] == 1) {
           term2 <- "alpha_shared[1] * cov_phi_shared[i, 1]"
         } else {
-          term2 <- "inprod(alpha_shared[], cov_phi_shared[i, ])"
+          term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, 1:M_phi_shared])"
         }
         ans <- c(ans, paste0(
           "        log(phi[i]) <- ", term1, " + ", term2))
@@ -83,12 +83,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_phi[i] == 1) {
           term1 <- "alpha[i, 1] * cov_phi[j, 1]"
         } else {
-          term1 <- "inprod(alpha[i, ], cov_phi[j, ])"
+          term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[j, 1:M_phi])"
         }
         if (cases$M_cov_phi_shared[i] == 1) {
           term2 <- "alpha_shared[1] * cov_phi_shared[i, j, 1]"
         } else {
-          term2 <- "inprod(alpha_shared[], cov_phi_shared[i, j, ])"
+          term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, j, 1:M_phi_shared])"
         }
         ans <- c(ans, 
                  "        for (j in 1:J) {", paste0(
@@ -98,12 +98,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_phi[i] == 1) {
           term1 <- "alpha[i, 1] * cov_phi[j, k, 1]"
         } else {
-          term1 <- "inprod(alpha[i, ], cov_phi[j, k, ])"
+          term1 <- "inprod(alpha[i, 1:M_phi], cov_phi[j, k, 1:M_phi])"
         }
         if (cases$M_cov_phi_shared[i] == 1) {
           term2 <- "alpha_shared[1] * cov_phi_shared[i, j, k, 1]"
         } else {
-          term2 <- "inprod(alpha_shared[], cov_phi_shared[i, j, k, ])"
+          term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, j, k, 1:M_phi_shared])"
         }
         ans <- c(ans,
                  "        for (j in 1:J) {",
@@ -119,18 +119,18 @@ test_that("NIMBLE code is correct for 3888 available models", {
                    "        log(phi[i]) <- alpha[i, 1] * cov_phi[1]")
         } else {
           ans <- c(ans,
-                   "        log(phi[i]) <- inprod(alpha[i, ], cov_phi[])")
+                   "        log(phi[i]) <- inprod(alpha[i, 1:M_phi], cov_phi[1:M_phi])")
         }
       } else if (cases$phi[i] == "ij") {
         if (cases$M_cov_phi[i] == 1) {
           ans <- c(ans,
                    "        for (j in 1:J) {",
-                   "            log(phi[i, j]) <- alpha[i, ] * cov_phi[j, 1]",
+                   "            log(phi[i, j]) <- alpha[i, 1] * cov_phi[j, 1]",
                    "        }")
         } else {
           ans <- c(ans,
                    "        for (j in 1:J) {",
-                   "            log(phi[i, j]) <- inprod(alpha[i, ], cov_phi[j, ])",
+                   "            log(phi[i, j]) <- inprod(alpha[i, 1:M_phi], cov_phi[j, 1:M_phi])",
                    "        }")
         }
       } else if (cases$phi[i] == "ijk") {
@@ -145,7 +145,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
           ans <- c(ans,
                    "        for (j in 1:J) {",
                    "            for (k in 1:K) {",
-                   "                log(phi[i, j, k]) <- inprod(alpha[i, ], cov_phi[j, k, ])",
+                   "                log(phi[i, j, k]) <- inprod(alpha[i, 1:M_phi], cov_phi[j, k, 1:M_phi])",
                    "            }",
                    "        }")
         }
@@ -157,12 +157,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_theta[i] == 1) {
           term1 <- "beta[i, 1] * cov_theta[1]"
         } else {
-          term1 <- "inprod(beta[i, ], cov_theta[])"
+          term1 <- "inprod(beta[i, 1:M_theta], cov_theta[1:M_theta])"
         }
         if (cases$M_cov_theta_shared[i] == 1) {
           term2 <- "beta_shared[1] * cov_theta_shared[i, 1]"
         } else {
-          term2 <- "inprod(beta_shared[], cov_theta_shared[i, ])"
+          term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, 1:M_theta_shared])"
         }
         ans <- c(ans, paste0(
           "        logit(theta[i]) <- ", term1, " + ", term2))
@@ -170,12 +170,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_theta[i] == 1) {
           term1 <- "beta[i, 1] * cov_theta[j, 1]"
         } else {
-          term1 <- "inprod(beta[i, ], cov_theta[j, ])"
+          term1 <- "inprod(beta[i, 1:M_theta], cov_theta[j, 1:M_theta])"
         }
         if (cases$M_cov_theta_shared[i] == 1) {
           term2 <- "beta_shared[1] * cov_theta_shared[i, j, 1]"
         } else {
-          term2 <- "inprod(beta_shared[], cov_theta_shared[i, j, ])"
+          term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, j, 1:M_theta_shared])"
         }
         ans <- c(ans,
                  "        for (j in 1:J) {", paste0(
@@ -185,12 +185,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_theta[i] == 1) {
           term1 <- "beta[i, 1] * cov_theta[j, k, 1]"
         } else {
-          term1 <- "inprod(beta[i, ], cov_theta[j, k, ])"
+          term1 <- "inprod(beta[i, 1:M_theta], cov_theta[j, k, 1:M_theta])"
         }
         if (cases$M_cov_theta_shared[i] == 1) {
           term2 <- "beta_shared[1] * cov_theta_shared[i, j, k, 1]"
         } else {
-          term2 <- "inprod(beta_shared[], cov_theta_shared[i, j, k, ])"
+          term2 <- "inprod(beta_shared[1:M_theta_shared], cov_theta_shared[i, j, k, 1:M_theta_shared])"
         }
         ans <- c(ans,
                  "        for (j in 1:J) {",
@@ -206,7 +206,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
                    "        logit(theta[i]) <- beta[i, 1] * cov_theta[1]")
         } else {
           ans <- c(ans,
-                   "        logit(theta[i]) <- inprod(beta[i, ], cov_theta[])")
+                   "        logit(theta[i]) <- inprod(beta[i, 1:M_theta], cov_theta[1:M_theta])")
         }
       if (cases$theta[i] == "ij")
         if (cases$M_cov_theta[i] == 1) {
@@ -217,7 +217,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
         } else {
           ans <- c(ans,
                    "        for (j in 1:J) {",
-                   "            logit(theta[i, j]) <- inprod(beta[i, ], cov_theta[j, ])",
+                   "            logit(theta[i, j]) <- inprod(beta[i, 1:M_theta], cov_theta[j, 1:M_theta])",
                    "        }")
         }
       if (cases$theta[i] == "ijk")
@@ -232,7 +232,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
           ans <- c(ans,
                    "        for (j in 1:J) {",
                    "            for (k in 1:K) {",
-                   "                logit(theta[i, j, k]) <- inprod(beta[i, ], cov_theta[j, k, ])",
+                   "                logit(theta[i, j, k]) <- inprod(beta[i, 1:M_theta], cov_theta[j, k, 1:M_theta])",
                    "            }",
                    "        }")
         }
@@ -243,12 +243,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_psi[i] == 1) {
           term1 <- "gamma[i, 1] * cov_psi[1]"
         } else {
-          term1 <- "inprod(gamma[i, ], cov_psi[])"
+          term1 <- "inprod(gamma[i, 1:M_psi], cov_psi[1:M_psi])"
         }
         if (cases$M_cov_psi_shared[i] == 1) {
           term2 <- "gamma_shared[1] * cov_psi_shared[i, 1]"
         } else {
-          term2 <- "inprod(gamma_shared[], cov_psi_shared[i, ])"
+          term2 <- "inprod(gamma_shared[1:M_psi_shared], cov_psi_shared[i, 1:M_psi_shared])"
         }
         ans <- c(ans,
                  paste0("        logit(psi[i]) <- ", term1, " + ", term2))
@@ -257,12 +257,12 @@ test_that("NIMBLE code is correct for 3888 available models", {
         if (cases$M_cov_psi[i] == 1) {
           term1 <- "gamma[i, 1] * cov_psi[j, 1]"
         } else {
-          term1 <- "inprod(gamma[i, ], cov_psi[j, ])"
+          term1 <- "inprod(gamma[i, 1:M_psi], cov_psi[j, 1:M_psi])"
         }
         if (cases$M_cov_psi_shared[i] == 1) {
           term2 <- "gamma_shared[1] * cov_psi_shared[i, j, 1]"
         } else {
-          term2 <- "inprod(gamma_shared[], cov_psi_shared[i, j, ])"
+          term2 <- "inprod(gamma_shared[1:M_psi_shared], cov_psi_shared[i, j, 1:M_psi_shared])"
         }
         ans <- c(ans,
                  "        for (j in 1:J) {", paste0(
@@ -276,7 +276,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
                    "        logit(psi[i]) <- gamma[i, 1] * cov_psi[1]")
         } else {
           ans <- c(ans,
-                   "        logit(psi[i]) <- inprod(gamma[i, ], cov_psi[])")
+                   "        logit(psi[i]) <- inprod(gamma[i, 1:M_psi], cov_psi[1:M_psi])")
         }
       } else if (cases$psi[i] == "ij") {
         if (cases$M_cov_psi[i] == 1) {
@@ -287,7 +287,7 @@ test_that("NIMBLE code is correct for 3888 available models", {
         } else {
           ans <- c(ans,
                    "        for (j in 1:J) {",
-                   "            logit(psi[i, j]) <- inprod(gamma[i, ], cov_psi[j, ])",
+                   "            logit(psi[i, j]) <- inprod(gamma[i, 1:M_psi], cov_psi[j, 1:M_psi])",
                    "        }")
         }
       }
