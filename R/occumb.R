@@ -227,50 +227,14 @@ occumb <- function(formula_phi = ~ 1,
     model_code <- paste0(model_code, collapse = "\n")
     model_code <- str2lang(model_code)
     
-    # Run MCMC in NIMBLE
-    const_nimble <- c(
-      const[c("I", "J", "K", "N")], 
-      dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared", "prior_prec", "prior_ulim")],
-      len_m_phi = length(dat$m_phi), len_m_theta = length(dat$m_theta), len_m_psi = length(dat$m_psi))
-    const_nimble <- const_nimble[!is.na(names(const_nimble))]
-    dat_nimble <- dat[c("y", "cov_phi", "cov_theta", "cov_psi", 
-                        "cov_phi_shared", "cov_theta_shared", "cov_psi_shared",
-                        "m_phi", "m_theta", "m_psi")]
-    dat_nimble <- dat_nimble[!is.na(names(dat_nimble))]
-    dim_cov_phi <- if(is.null(dim(dat$cov_phi))) length(dat$cov_phi) else dim(dat$cov_phi)
-    dim_cov_theta <- if(is.null(dim(dat$cov_theta))) length(dat$cov_theta) else dim(dat$cov_theta)
-    dim_cov_psi <- if(is.null(dim(dat$cov_psi))) length(dat$cov_psi) else dim(dat$cov_psi)
-    dimensions <- list(
-      alpha = c(dat$I, length(dat$cov_phi)), cov_phi = dim_cov_phi,
-      beta = c(dat$I, length(dat$cov_theta)), cov_theta = dim_cov_theta,
-      gamma = c(dat$I, length(dat$cov_psi)), cov_psi = dim_cov_psi,
-      alpha_shared = list_covs_phi$M_shared,
-      beta_shared = list_covs_theta$M_shared,
-      gamma_shared = list_covs_psi$M_shared,
-      cov_phi_shared = c(dat$I, list_covs_phi$M_shared),
-      cov_theta_shared = c(dat$I, list_covs_theta$M_shared),
-      cov_psi_shared = c(dat$I, list_covs_psi$M_shared)
-    )
-    dimensions <- Filter(Negate(is.null), dimensions)
-    start_time <- Sys.time()
-    fit <- nimble::nimbleMCMC(code = model_code, constants = const_nimble, 
-                              data = dat_nimble, inits = inits, 
-                              dimensions = dimensions, monitors = params,
-                              thin = n.thin, niter = n.iter, nburnin = n.burnin,
-                              nchains = n.chains, WAIC = TRUE, ...)
-    elapsed_mins <- round(as.numeric(Sys.time() - start_time, units = "mins"), 
-                          digits = 3)
-    fit <- nimbleSummary(fit)
-    rownames(fit$summary) <- gsub(pattern = "\\s", replacement = "",
-                                  rownames(fit$summary))
-    fit$parallel <- parallel
-    fit$parameters <- params
-    fit$model <- model_code
-    # fit$modfile
-    fit$run.date <- start_time
-    fit$mcmc.info$n.burnin <- n.burnin
-    fit$mcmc.info$n.thin <- n.thin
-    fit$mcmc.info$elapsed.mins <- elapsed_mins
+    fit <- run_nimble(dat, inits, params, model_code,
+                      const, list_covs_phi, list_covs_theta, list_covs_psi,
+                      n.chains = n.chains,
+                      n.adapt  = n.adapt,
+                      n.iter   = n.iter,
+                      n.burnin = n.burnin,
+                      n.thin   = n.thin,
+                      parallel = parallel, ...)
   }
   
   # Output
