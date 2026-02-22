@@ -33,4 +33,4 @@ internal_fit_nimble <- occumb(
 )
 
 usethis::use_data(internal_fit, internal_fit_nimble, gof_ft, 
-                  internal = TRUE, overwrite = TRUE)
+                  internal = TRUE, overwrite = TRUE, version = 2)

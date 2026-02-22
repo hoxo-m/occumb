@@ -73,6 +73,7 @@ run_nimble_parallel <- function(code, const, data, inits, dimensions, monitors,
   if (is.null(n.cores)) n.cores <- parallel::detectCores()
   n.cores <- min(n.cores, n.chains)
   cluster <- parallel::makeCluster(n.cores)
+  parallel::clusterEvalQ(cluster, library(nimble))
   results <- parallel::parLapply(cl = cluster, X = seq_len(n.chains),
                                  fun = run_nimble_MCMC, code = code,
                                  const = const,

@@ -215,8 +215,14 @@ occumb <- function(formula_phi = ~ 1,
   } else { # NIMBLE
     if (!requireNamespace("nimble", quietly = TRUE)) {
       stop("Package 'nimble' is required for this function. Please install it.", call. = FALSE)
+    } 
+
+    attached_here <- !("package:nimble" %in% search())
+    if (attached_here) {
+      attachNamespace("nimble")
+      on.exit(detach("package:nimble", unload = FALSE, character.only = TRUE), add = TRUE)
     }
-    
+
     # Write model code
     list_covs_phi <- set_covariates(data, formula_phi, formula_phi_shared, "phi")
     list_covs_theta <- set_covariates(data, formula_theta, formula_theta_shared, "theta")

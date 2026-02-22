@@ -63,7 +63,15 @@ print.nimbleSummary <- function(x, digits=3, ...){
 
 }
 
+#' Summarize a nimbleSummary object
+#'
+#' `summary()` method for objects returned by `nimbleSummary()`.
+#'
+#' @param object A `nimbleSummary` object.
+#' @param ... Unused.
+#' @return The summary matrix (invisibly). Printed for convenience.
 #' @export
+#' @method summary nimbleSummary
 summary.nimbleSummary <- function(object, ...){
   print(object$summary)
   invisible(object$summary)
