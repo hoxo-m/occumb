@@ -15,7 +15,7 @@ factors <- list(
   M_cov_psi_shared = M_cov_psi_shared
 )
 
-if (method == "pairwise") {
+if (method == "pairwise") { # 36 cases
   nlevels <- vapply(factors, length, integer(1))
   cases <- suppressMessages(
     DoE.base::oa.design(
@@ -24,7 +24,7 @@ if (method == "pairwise") {
       randomize = FALSE
     )
   )
-} else { # full
+} else { # 3888 cases
   cases <- do.call(expand.grid, args = factors)
   cases <- subset(cases, phi_shared   | !phi_shared   & M_cov_phi_shared   == 1)
   cases <- subset(cases, theta_shared | !theta_shared & M_cov_theta_shared == 1)
@@ -33,7 +33,7 @@ if (method == "pairwise") {
 
 ### Tests for write_nimble_model() -----------------------------------------------
 test_that("NIMBLE code is correct", {
-  for (i in 1:nrow(cases)) {
+  for (i in seq_len(nrow(cases))) {
     ans <- readLines(system.file("nimble",
                                  "occumb_template1.nimble",
                                  package = "occumb"))

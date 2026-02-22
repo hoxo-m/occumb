@@ -1,52 +1,52 @@
-run_nimble <- function(data, inits = NULL, parameters.to.save, model.file, 
+run_nimble <- function(data, inits = NULL, parameters.to.save, model.file,
                        const, list_covs_phi, list_covs_theta, list_covs_psi,
-                       n.chains, n.adapt = NULL, n.iter, n.burnin = 0, n.thin = 1, 
-                       modules = c("glm"), factories = NULL, parallel = FALSE, 
-                       n.cores = NULL, DIC = TRUE, store.data = FALSE, codaOnly = FALSE, 
+                       n.chains, n.adapt = NULL, n.iter, n.burnin = 0, n.thin = 1,
+                       modules = c("glm"), factories = NULL, parallel = FALSE,
+                       n.cores = NULL, DIC = TRUE, store.data = FALSE, codaOnly = FALSE,
                        seed = NULL, bugs.format = FALSE, verbose = TRUE, ...) {
   dat <- data
   len_m_phi   <- length(dat$m_phi)
   len_m_theta <- length(dat$m_theta)
   len_m_psi   <- length(dat$m_psi)
-  pad2 <- function(x) if(length(x) == 1L) c(x, x) else x
+  pad2 <- function(x) if (length(x) == 1L) c(x, x) else x
   dat$m_phi   <- pad2(dat$m_phi)
   dat$m_theta <- pad2(dat$m_theta)
   dat$m_psi   <- pad2(dat$m_psi)
   params <- parameters.to.save
   model_code <- model.file
-  
+
   body <- body(inits)
   n_rho <- as.integer(dat$M * (dat$M - 1) / 2)
   body[[2]][names(body[[2]]) == "rho"][[1]] <- substitute(double(n), list(n = n_rho))
   body(inits) <- body
-  
+
   # Run MCMC in NIMBLE
   const_nimble <- c(
-    const[c("I", "J", "K", "N")], 
-    dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared", 
+    const[c("I", "J", "K", "N")],
+    dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared",
           "m_phi", "m_theta", "m_psi", "prior_prec", "prior_ulim")],
     M_phi = len_m_phi, M_theta = len_m_theta, M_psi = len_m_psi)
   const_nimble$rho_index <- make_rho_index(const_nimble$M)
   const_nimble <- const_nimble[!is.na(names(const_nimble))]
-  dat_nimble <- dat[c("y", "cov_phi", "cov_theta", "cov_psi", 
+  dat_nimble <- dat[c("y", "cov_phi", "cov_theta", "cov_psi",
                       "cov_phi_shared", "cov_theta_shared", "cov_psi_shared")]
   dat_nimble <- dat_nimble[!is.na(names(dat_nimble))]
   start_time <- Sys.time()
   if (parallel) {
-    fit <- run_nimble_parallel(code = model_code, const = const_nimble, 
-                               data = dat_nimble, inits = inits, 
+    fit <- run_nimble_parallel(code = model_code, const = const_nimble,
+                               data = dat_nimble, inits = inits,
                                monitors = params,
-                               n.iter = n.iter, n.burnin = n.burnin, 
-                               n.thin = n.thin, n.chains = n.chains, 
+                               n.iter = n.iter, n.burnin = n.burnin,
+                               n.thin = n.thin, n.chains = n.chains,
                                n.cores = n.cores)
   } else {
-    fit <- nimble::nimbleMCMC(code = model_code, constants = const_nimble, 
-                              data = dat_nimble, inits = inits, 
+    fit <- nimble::nimbleMCMC(code = model_code, constants = const_nimble,
+                              data = dat_nimble, inits = inits,
                               monitors = params,
                               thin = n.thin, niter = n.iter, nburnin = n.burnin,
                               nchains = n.chains, WAIC = FALSE, ...)
   }
-  elapsed_mins <- round(as.numeric(Sys.time() - start_time, units = "mins"), 
+  elapsed_mins <- round(as.numeric(Sys.time() - start_time, units = "mins"),
                         digits = 3)
   message("Summarizing MCMC samples...")
   fit <- nimbleSummary(fit)
@@ -61,34 +61,37 @@ run_nimble <- function(data, inits = NULL, parameters.to.save, model.file,
   fit$mcmc.info$n.burnin <- n.burnin
   fit$mcmc.info$n.thin <- n.thin
   fit$mcmc.info$elapsed.mins <- elapsed_mins
-  
-  fit  
+
+  fit 
 }
 
 run_nimble_parallel <- function(code, const, data, inits, dimensions, monitors,
                                 n.iter, n.burnin, n.thin, n.chains, n.cores) {
-  if (!require("parallel")) stop("not found parallel package")
-  
+  if (!requireNamespace("parallel", quietly = TRUE)) {
+    stop("Package 'parallel' is required for this function. Please install it.", call. = FALSE)
+  }
   if (is.null(n.cores)) n.cores <- parallel::detectCores()
   n.cores <- min(n.cores, n.chains)
   cluster <- parallel::makeCluster(n.cores)
-  results <- parallel::parLapply(cl = cluster, X = seq_len(n.chains), 
+  results <- parallel::parLapply(cl = cluster, X = seq_len(n.chains),
                                  fun = run_nimble_MCMC, code = code,
-                                 const = const, 
-                                 data = data, inits = inits, 
+                                 const = const,
+                                 data = data, inits = inits,
                                  dimensions = dimensions, monitors = monitors,
                                  n.iter = n.iter, n.burnin = n.burnin,
                                  n.thin = n.thin, n.chains = 1L)
   parallel::stopCluster(cl = cluster)
-  
+
   results
 }
 
 run_nimble_MCMC <- function(seed, code, const, data, inits, dimensions, monitors,
                             n.iter, n.burnin, n.thin, n.chains) {
-  if (!require("nimble")) stop("not found nimble package")
+  if (!requireNamespace("nimble", quietly = TRUE)) {
+    stop("Package 'nimble' is required for this function. Please install it.", call. = FALSE)
+  }
   
-  model <- nimble::nimbleModel(code = code, constants = const, data = data, 
+  model <- nimble::nimbleModel(code = code, constants = const, data = data,
                                inits = inits(), dimensions = dimensions)
   Cmodel <- nimble::compileNimble(model)
   MCMC <- nimble::buildMCMC(Cmodel, monitors = monitors)
@@ -105,7 +108,7 @@ write_nimble_model <- function(phi, theta, psi,
                                M_cov_phi, M_cov_phi_shared,
                                M_cov_theta, M_cov_theta_shared,
                                M_cov_psi, M_cov_psi_shared) {
-  
+
   model <- readLines(system.file("nimble",
                                  "occumb_template1.nimble",
                                  package = "occumb"))
@@ -119,12 +122,12 @@ write_nimble_model <- function(phi, theta, psi,
   if (phi == "ijk")
     model <- c(model,
                "                r[i, j, k] ~ dgamma(phi[i, j, k], 1)")
-  
+
   model <- c(model,
              readLines(system.file("nimble",
                                    "occumb_template2.nimble",
                                    package = "occumb")))
-  
+
   if (theta == "i")
     model <- c(model,
                "                u[i, j, k] ~ dbern(z[i, j] * theta[i])")
@@ -134,24 +137,24 @@ write_nimble_model <- function(phi, theta, psi,
   if (theta == "ijk")
     model <- c(model,
                "                u[i, j, k] ~ dbern(z[i, j] * theta[i, j, k])")
-  
+
   model <- c(model,
              readLines(system.file("jags",
                                    "occumb_template3.jags",
                                    package = "occumb")))
-  
+
   if (psi == "i")
     model <- c(model,
                "            z[i, j] ~ dbern(psi[i])")
   if (psi == "ij")
     model <- c(model,
                "            z[i, j] ~ dbern(psi[i, j])")
-  
+
   model <- c(model,
              readLines(system.file("jags",
                                    "occumb_template4.jags",
                                    package = "occumb")))
-  
+
   if (phi_shared) {
     if (phi == "i") {
       if (M_cov_phi == 1) {
@@ -177,7 +180,7 @@ write_nimble_model <- function(phi, theta, psi,
       } else {
         term2 <- "inprod(alpha_shared[1:M_phi_shared], cov_phi_shared[i, j, 1:M_phi_shared])"
       }
-      model <- c(model, 
+      model <- c(model,
                  "        for (j in 1:J) {", paste0(
                  "            log(phi[i, j]) <- ", term1, " + ", term2),
                  "        }")
@@ -238,7 +241,7 @@ write_nimble_model <- function(phi, theta, psi,
       }
     }
   }
-  
+
   if (theta_shared) {
     if (theta == "i") {
       if (M_cov_theta == 1) {
@@ -324,7 +327,7 @@ write_nimble_model <- function(phi, theta, psi,
                    "        }")
       }
   }
-  
+
   if (psi_shared) {
     if (psi == "i") {
       if (M_cov_psi == 1) {
@@ -339,7 +342,7 @@ write_nimble_model <- function(phi, theta, psi,
       }
       model <- c(model,
                  paste0("        logit(psi[i]) <- ", term1, " + ", term2))
-    
+  
     } else if (psi == "ij") {
       if (M_cov_psi == 1) {
         term1 <- "gamma[i, 1] * cov_psi[j, 1]"
@@ -379,12 +382,12 @@ write_nimble_model <- function(phi, theta, psi,
       }
     }
   }
-  
+
   model <- c(model,
              readLines(system.file("nimble",
                                    "occumb_template5.nimble",
                                    package = "occumb")))
-  
+
   if (phi_shared)
     model <- c(model,
                "    for (m in 1:M_phi_shared) {",
@@ -400,17 +403,17 @@ write_nimble_model <- function(phi, theta, psi,
                "    for (m in 1:M_psi_shared) {",
                "        gamma_shared[m] ~ dnorm(0, prior_prec)",
                "    }")
-  
+
   model <- c(model, "}", "")
-  
+
   model
 }
 
 make_rho_index <- function(M) {
   index <- matrix(0L, M, M)
   ind <- 1L
-  for (m1 in 1:(M-1)) {
-    for (m2 in (m1+1):M) {
+  for (m1 in 1:(M - 1)) {
+    for (m2 in (m1 + 1):M) {
       index[m1, m2] <- ind
       ind <- ind + 1L
     }

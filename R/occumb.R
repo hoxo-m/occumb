@@ -213,7 +213,9 @@ occumb <- function(formula_phi = ~ 1,
                         n.thin   = n.thin,
                         parallel = parallel, ...)
   } else { # NIMBLE
-    if (!require("nimble")) stop(r"(require install.pcakages("nimble"))")
+    if (!requireNamespace("nimble", quietly = TRUE)) {
+      stop("Package 'nimble' is required for this function. Please install it.", call. = FALSE)
+    }
     
     # Write model code
     list_covs_phi <- set_covariates(data, formula_phi, formula_phi_shared, "phi")

@@ -24,7 +24,10 @@ Suggests:
     spelling,
     testthat (>= 3.0.0),
     tibble,
-    vdiffr
+    vdiffr,
+    nimble,
+    coda,
+    DoE.base
 Config/testthat/edition: 3
 Imports: 
     stats,
@@ -32,13 +35,11 @@ Imports:
     graphics,
     checkmate,
     crayon,
-    nimble,
     knitr
 Collate: 
     'classes.R'
     'fish.R'
     'fish_raw.R'
-    'for_nimble.R'
     'get_posterior.R'
     'gof.R'
     'nimbleSummary.R'
@@ -46,11 +47,11 @@ Collate:
     'occumb.R'
     'plot.R'
     'predict.R'
+    'run_nimble.R'
     'show.R'
     'summary.R'
     'utility.R'
     'utils.R'
-    'zzz.R'
 URL: https://fukayak.github.io/occumb/, https://github.com/fukayak/occumb
 Depends: 
     jagsUI,
