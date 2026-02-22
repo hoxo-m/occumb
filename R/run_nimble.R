@@ -65,7 +65,7 @@ run_nimble <- function(data, inits = NULL, parameters.to.save, model.file,
   fit 
 }
 
-run_nimble_parallel <- function(code, const, data, inits, dimensions, monitors,
+run_nimble_parallel <- function(code, const, data, inits, monitors,
                                 n.iter, n.burnin, n.thin, n.chains, n.cores) {
   if (!requireNamespace("parallel", quietly = TRUE)) {
     stop("Package 'parallel' is required for this function. Please install it.", call. = FALSE)
@@ -78,7 +78,7 @@ run_nimble_parallel <- function(code, const, data, inits, dimensions, monitors,
                                  fun = run_nimble_MCMC, code = code,
                                  const = const,
                                  data = data, inits = inits,
-                                 dimensions = dimensions, monitors = monitors,
+                                 monitors = monitors,
                                  n.iter = n.iter, n.burnin = n.burnin,
                                  n.thin = n.thin, n.chains = 1L)
   parallel::stopCluster(cl = cluster)
@@ -86,14 +86,11 @@ run_nimble_parallel <- function(code, const, data, inits, dimensions, monitors,
   results
 }
 
-run_nimble_MCMC <- function(seed, code, const, data, inits, dimensions, monitors,
+run_nimble_MCMC <- function(seed, code, const, data, inits, monitors,
                             n.iter, n.burnin, n.thin, n.chains) {
-  if (!requireNamespace("nimble", quietly = TRUE)) {
-    stop("Package 'nimble' is required for this function. Please install it.", call. = FALSE)
-  }
   
   model <- nimble::nimbleModel(code = code, constants = const, data = data,
-                               inits = inits(), dimensions = dimensions)
+                               inits = inits())
   Cmodel <- nimble::compileNimble(model)
   MCMC <- nimble::buildMCMC(Cmodel, monitors = monitors)
   CMCMC <- nimble::compileNimble(MCMC)
