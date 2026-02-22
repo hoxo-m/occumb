@@ -1,7 +1,6 @@
             }
-            sum_ur[j, k] <- .nimble_ifelse(sum(u[1:I, j, k]) > 0, 
-                                           sum(u[1:I, j, k] * r[1:I, j, k]), 
-                                           1)
+            is_pos[j, k] <- step(sum(u[1:I, j, k]) - 0.5)
+            sum_ur[j, k] <- inprod(u[1:I, j, k], r[1:I, j, k]) + (1 - is_pos[j, k])
         }
     }
 

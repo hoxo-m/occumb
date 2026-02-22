@@ -1,23 +1,38 @@
-### Test cases for set_data/inits_code/set_params_monitored/write_jags_model ---
+### Test cases for write_nimble_model --------------------------------------------
+method <- c("pairwise", "full")[1]
+
 phi <- theta <- c("i", "ij", "ijk")
 psi <- c("i", "ij")
 phi_shared <- theta_shared <- psi_shared <- c(FALSE, TRUE)
 M_cov_phi <- M_cov_theta <- M_cov_psi <- 1:2
 M_cov_phi_shared <- M_cov_theta_shared <- M_cov_psi_shared <- 1:2
 
-cases <- expand.grid(phi, theta, psi, phi_shared, theta_shared, psi_shared,
-                     M_cov_phi, M_cov_theta, M_cov_psi,
-                     M_cov_phi_shared, M_cov_theta_shared, M_cov_psi_shared)
-colnames(cases) <- c("phi", "theta", "psi",
-                     "phi_shared", "theta_shared", "psi_shared",
-                     "M_cov_phi", "M_cov_theta", "M_cov_psi",
-                     "M_cov_phi_shared", "M_cov_theta_shared", "M_cov_psi_shared")
-cases <- subset(cases, phi_shared   | !phi_shared   & M_cov_phi_shared   == 1)
-cases <- subset(cases, theta_shared | !theta_shared & M_cov_theta_shared == 1)
-cases <- subset(cases, psi_shared   | !psi_shared   & M_cov_psi_shared   == 1)
+factors <- list(
+  phi = phi, theta = theta, psi = psi,
+  phi_shared = phi_shared, theta_shared = theta_shared, psi_shared = psi_shared,
+  M_cov_phi = M_cov_phi, M_cov_theta = M_cov_theta, M_cov_psi = M_cov_psi,
+  M_cov_phi_shared = M_cov_phi_shared, M_cov_theta_shared = M_cov_theta_shared,
+  M_cov_psi_shared = M_cov_psi_shared
+)
+
+if (method == "pairwise") {
+  nlevels <- vapply(factors, length, integer(1))
+  cases <- suppressMessages(
+    DoE.base::oa.design(
+      nlevels = nlevels,
+      factor.names = factors,
+      randomize = FALSE
+    )
+  )
+} else { # full
+  cases <- do.call(expand.grid, args = factors)
+  cases <- subset(cases, phi_shared   | !phi_shared   & M_cov_phi_shared   == 1)
+  cases <- subset(cases, theta_shared | !theta_shared & M_cov_theta_shared == 1)
+  cases <- subset(cases, psi_shared   | !psi_shared   & M_cov_psi_shared   == 1)
+}
 
 ### Tests for write_nimble_model() -----------------------------------------------
-test_that("NIMBLE code is correct for 3888 available models", {
+test_that("NIMBLE code is correct", {
   for (i in 1:nrow(cases)) {
     ans <- readLines(system.file("nimble",
                                  "occumb_template1.nimble",
