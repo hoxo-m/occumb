@@ -1,22 +1,23 @@
 run_nimble <- function(data, const, inits, params, model_code_strings, model_file,
                        n.chains, n.iter, n.burnin, n.thin, parallel, ...) {
   attach_nimble_package()
-  
-  # Validate arguments
-  # store.data
-  # seed
+
+  # Check arguments
   model_code <- to_model_code(model_code_strings)
-  n.cores <- list(...)$n.cores
-  verbose <- list(...)$verbose
+  dots_arguments <- list(...)
+  n.cores <- dots_arguments$n.cores
+  seed <- dots_arguments$seed
+  stopifnot(is.null(seed) || is.logical(seed) || (is.numeric(seed) && length(seed) == n.chains))
+  store.data <- dots_arguments$store.data
+  verbose <- dots_arguments$verbose
   if (!is.null(verbose)) {
     verbose_old <- nimble::getNimbleOption("verbose")
-    nimble::nimbleOptions(verbose = verbose)
-    on.exit(nimble::nimbleOptions(verbose = verbose_old), add = TRUE)
-    if (verbose == FALSE) {
-      progress_bar_old <- nimble::getNimbleOption("MCMCprogressBar")
-      nimble::nimbleOptions(MCMCprogressBar = FALSE)
-      on.exit(nimble::nimbleOptions(MCMCprogressBar = progress_bar_old), add = TRUE)
-    }
+    progress_bar_old <- nimble::getNimbleOption("MCMCprogressBar")
+    nimble::nimbleOptions(verbose = verbose, MCMCprogressBar = verbose)
+    on.exit({
+      nimble::nimbleOptions(verbose = verbose_old)
+      nimble::nimbleOptions(MCMCprogressBar = progress_bar_old)
+    }, add = TRUE)
   }
   
   # Set constants
@@ -26,22 +27,19 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
   data_nimble <- set_data_nimble(data)
   
   # Set initial values
-  body <- body(inits)
-  n_rho <- as.integer(data$M * (data$M - 1) / 2)
-  body[[2]][names(body[[2]]) == "rho"][[1]] <- substitute(double(n), list(n = n_rho))
-  body(inits) <- body
+  inits_nimble <- set_inits_nimble(inits, seed, n.chains, n_rho = max(const_nimble$rho))
 
   # Run MCMC in NIMBLE
   start_time <- Sys.time()
   if (parallel) {
-    fit <- run_nimble_parallel(code = model_code, const = const_nimble,
-                               data = data_nimble, inits = inits,
+    fit <- run_nimble_parallel(inits = inits_nimble, code = model_code,
+                               const = const_nimble, data = data_nimble,
                                monitors = params,
                                n.iter, n.burnin, n.thin, n.chains,
                                n.cores = n.cores)
   } else {
-    fit <- run_nimble_model(seed, code = model_code, const = const_nimble, 
-                            data = data_nimble, inits = inits,
+    fit <- run_nimble_model(inits = inits_nimble, code = model_code,
+                            const = const_nimble, data = data_nimble,
                             monitors = params,
                             n.iter, n.burnin, n.thin, n.chains)
   }
@@ -49,22 +47,13 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
                         digits = 3)
   nimble::messageIfVerbose("Summarizing MCMC samples...")
   fit <- nimbleSummary(fit)
+  fit <- make_jagsui_compatible(fit)
   nimble::messageIfVerbose("Finished")
-  rownames(fit$summary) <- gsub(pattern = "\\s", replacement = "",
-                                rownames(fit$summary))
-  fit$parallel <- parallel
-  fit$parameters <- params
-  fit$model <- model_code
-  fit$modfile <- model_file
-  fit$run.date <- start_time
-  fit$mcmc.info$n.burnin <- n.burnin
-  fit$mcmc.info$n.thin <- n.thin
-  fit$mcmc.info$elapsed.mins <- elapsed_mins
-
+  
   fit
 }
 
-run_nimble_parallel <- function(code, const, data, inits, monitors,
+run_nimble_parallel <- function(inits, code, const, data, monitors,
                                 n.iter, n.burnin, n.thin, n.chains, n.cores) {
   if (!requireNamespace("parallel", quietly = TRUE)) {
     stop("Package 'parallel' is required. Please install it.", call. = FALSE)
@@ -77,10 +66,9 @@ run_nimble_parallel <- function(code, const, data, inits, monitors,
   }
   cluster <- parallel::makeCluster(n.cores)
   parallel::clusterEvalQ(cluster, library(nimble))
-  results <- parallel::parLapply(cl = cluster, X = seq_len(n.chains),
+  results <- parallel::parLapply(cl = cluster, X = inits,
                                  fun = run_nimble_model, code = code,
-                                 const = const,
-                                 data = data, inits = inits,
+                                 const = const, data = data, 
                                  monitors = monitors,
                                  n.iter = n.iter, n.burnin = n.burnin,
                                  n.thin = n.thin, n.chains = 1L)
@@ -89,11 +77,11 @@ run_nimble_parallel <- function(code, const, data, inits, monitors,
   results
 }
 
-run_nimble_model <- function(seed, code, const, data, inits, monitors,
+run_nimble_model <- function(inits, code, const, data, monitors,
                              n.iter, n.burnin, n.thin, n.chains) {
   
   model  <- nimble::nimbleModel(code = code, constants = const, data = data,
-                                inits = inits())
+                                inits = inits[[1]])
   Cmodel <- nimble::compileNimble(model)
   conf   <- nimble::configureMCMC(Cmodel, monitors = monitors, print = FALSE)
   conf$replaceSamplers(target = "Mu", type = "RW_block", silent = TRUE)
@@ -471,7 +459,7 @@ set_const_nimble <- function(const, data) {
   const_nimble$m_phi   <- pad_dummy_value(data$m_phi)
   const_nimble$m_theta <- pad_dummy_value(data$m_theta)
   const_nimble$m_psi   <- pad_dummy_value(data$m_psi)
-  const_nimble$rho_index <- make_rho_index(const_nimble$M)
+  const_nimble$rho_index <- make_rho_index(data$M)
   
   # Drop elements with NA names. These correspond to M_*_shared entries missing from data.
   const_nimble <- const_nimble[!is.na(names(const_nimble))]
@@ -504,4 +492,118 @@ pad_dummy_value <- function(x, dummy_value = -999) {
   } else {
     x
   }
+}
+
+set_inits_nimble <- function(inits, seed, n.chains, n_rho, store.data = FALSE) {
+  if (is.null(seed)) {
+    seeds <- floor(stats::runif(n.chains, 1, 1e+05))
+  } else if (isFALSE(seed)) {
+    set.seed(NULL)
+    seeds <- floor(stats::runif(n.chains, 1, 1e+05))
+  } else if (isTRUE(seed)) {
+    seeds <- seq_len(n.chains)
+  } else if (is.numeric(seed) && length(seed) == n.chains) {
+    seeds <- seed
+  } else {
+    stop()
+  }
+  inits_nimble <- lapply(seeds, function(s) {
+    set.seed(s)
+    i <- inits()
+    i$rho <- double(n_rho)
+    i
+  })
+  if (store.data) {
+    inits_nimble <- mapply(function(i, s) {
+      append(i, c(.RNG.name = get_rng_name(), .RNG.seed = s))
+    }, inits_nimble, seeds, SIMPLIFY = FALSE)
+  }
+  inits_nimble
+}
+
+get_rng_name <- function() {
+  kind <- RNGkind()[1]
+
+  if (kind != "user-supplied") {
+    return(paste0("base::", kind))
+  }
+
+  # --- dqrng ---
+  # Note: Example of switching RNG to 'dqrng' (and restoring it):
+  # dqrng::dqRNGkind("Xoshiro256++")
+  # dqrng::register_methods()
+  # RNGkind()
+  # dqrng::restore_methods()
+  if (requireNamespace("dqrng", quietly = TRUE)) {
+    kind <- tryCatch(dqrng::dqrng_get_state()[1], error = function(e) NULL)
+    if (!is.null(kind)) {
+      return(paste0("dqrng::", kind))
+    }
+  }
+
+  # --- randtoolbox ---
+  # Note: Example of switching RNG to 'randtoolbox' (and restoring it):
+  # randtoolbox::set.generator("WELL", version = "19937a")
+  # RNGkind()
+  # randtoolbox::set.generator("default")
+  if (requireNamespace("randtoolbox", quietly = TRUE)) {
+    kind <- tryCatch(randtoolbox::get.description()$name, error = function(e) NULL)
+    if (is.null(kind)) {
+      return(paste0("randtoolbox::", kind))
+    }
+  }
+
+  "base::user-supplied"
+}
+
+make_jagsui_compatible <- function(fit, env = parent.frame()) {
+  with(env, {
+    # Remove whitespace in parameter names (e.g., "alpha[1, 1]" -> "alpha[1,1]")
+    rownames(fit$summary) <- gsub(pattern = "\\s", replacement = "",
+                                  rownames(fit$summary))
+    fit$parallel   <- parallel
+    fit$parameters <- params
+    fit$model      <- to_occumb_nimble_model(model_code_strings, const_nimble, data_nimble)
+    fit$modfile    <- model_file
+    fit$run.date   <- start_time
+    fit$mcmc.info$n.burnin     <- n.burnin
+    fit$mcmc.info$n.thin       <- n.thin
+    fit$mcmc.info$elapsed.mins <- elapsed_mins
+    if (store.data) {
+      fit$data  <- data
+      fit$inits <- set_inits_nimble(inits, seed, n.chains, n_rho = max(const_nimble$rho), store.data)
+    }
+    fit
+  })
+}
+
+to_occumb_nimble_model <- function(model_code_strings, const, data) {
+  structure(
+    list(model_code_strings = model_code_strings, const = const, data = data), 
+    class = "occumb_nimble_model"
+  )
+}
+
+#' @export
+print.occumb_nimble_model <- function(x, ...) {
+  cat(crayon::bold("NIMBLE model:"), "\n")
+  for (i in seq_len(length(x$model_code_strings))) {
+    cat(x$model_code_strings[i], "\n", sep = "")
+  }
+  
+  seq_depth <- apply(x$data$y, c(2, 3), sum)
+  n_missing <- sum(is.na(seq_depth))
+  reps_per_site <- apply(seq_depth, 1, function(x) sum(!is.na(x)))
+  mean_seq_depth <- mean(seq_depth, na.rm = TRUE)
+  sd_seq_depth <- stats::sd(seq_depth, na.rm = TRUE)
+  
+  cat(crayon::bold("Sequence read counts:"), "\n")
+  cat(sprintf(" Number of species, I = %d", x$const$I), "\n")
+  cat(sprintf(" Number of sites, J = %d", x$const$J), "\n")
+  cat(sprintf(" Maximum number of replicates per site, K = %d", x$const$K), "\n")
+  cat(sprintf(" Number of missing observations = %d", n_missing), "\n")
+  cat(sprintf(" Number of replicates per site: %.2f (average), %.2f (sd)", 
+              mean(reps_per_site), stats::sd(reps_per_site)), "\n")
+  cat(sprintf(" Sequencing depth: %.1f (average), %.1f (sd)", 
+              mean_seq_depth, sd_seq_depth), "\n")
 }

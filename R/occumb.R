@@ -216,19 +216,19 @@ occumb <- function(formula_phi = ~ 1,
                         parallel = parallel, ...)
   } else { # NIMBLE
     # Write model file
-    list_covs_phi   <- set_covariates(data, formula_phi,   formula_phi_shared,   "phi")
-    list_covs_theta <- set_covariates(data, formula_theta, formula_theta_shared, "theta")
-    list_covs_psi   <- set_covariates(data, formula_psi,   formula_psi_shared,   "psi")
+    M_cov <- lapply(margs[c("m_phi", "m_theta", "m_psi")], length)
+    M_cov_shared <- margs[c("M_phi_shared", "M_theta_shared", "M_psi_shared")]
+    names(M_cov_shared) <- c("M_phi_shared", "M_theta_shared", "M_psi_shared")
     model_code <- write_nimble_model(margs$phi, margs$theta, margs$psi,
                                      margs$phi_shared,
                                      margs$theta_shared,
                                      margs$psi_shared,
-                                     M_cov_phi          = list_covs_phi$M,
-                                     M_cov_phi_shared   = list_covs_phi$M_shared,
-                                     M_cov_theta        = list_covs_theta$M,
-                                     M_cov_theta_shared = list_covs_theta$M_shared,
-                                     M_cov_psi          = list_covs_psi$M,
-                                     M_cov_psi_shared   = list_covs_psi$M_shared)
+                                     M_cov_phi          = M_cov$m_phi,
+                                     M_cov_phi_shared   = M_cov_shared$M_phi_shared,
+                                     M_cov_theta        = M_cov$m_theta,
+                                     M_cov_theta_shared = M_cov_shared$M_theta_shared,
+                                     M_cov_psi          = M_cov$m_psi,
+                                     M_cov_psi_shared   = M_cov_shared$M_psi_shared)
     model_file <- tempfile()
     writeLines(model_code, model_file)
 
