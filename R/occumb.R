@@ -104,7 +104,9 @@ setClass("occumbFit", slots = c(fit = "jagsUI",
 #' @param n.thin Thinning rate. Must be a positive integer.
 #' @param n.iter Total number of iterations per chain (including burn-in).
 #' @param parallel If TRUE, run MCMC chains in parallel on multiple CPU cores.
-#' @param engine description
+#' @param engine Character string specifying the MCMC backend used for model
+#'   fitting. Either `"JAGS"` (default; via \code{\link[jagsUI]{jags}()}) or
+#'   `"NIMBLE"` (via the \pkg{nimble} package).
 #' @param ... Additional arguments passed to \code{\link[jagsUI]{jags}()} function.
 #' @return  An S4 object of the \code{occumbFit} class containing the results of
 #'          the model fitting and the supplied dataset.
@@ -213,30 +215,25 @@ occumb <- function(formula_phi = ~ 1,
                         n.thin   = n.thin,
                         parallel = parallel, ...)
   } else { # NIMBLE
-    if (!requireNamespace("nimble", quietly = TRUE)) {
-      stop("Package 'nimble' is required for this function. Please install it.", call. = FALSE)
-    } 
-
-    attached_here <- !("package:nimble" %in% search())
-    if (attached_here) {
-      attachNamespace("nimble")
-      on.exit(detach("package:nimble", unload = FALSE, character.only = TRUE), add = TRUE)
-    }
-
-    # Write model code
-    list_covs_phi <- set_covariates(data, formula_phi, formula_phi_shared, "phi")
+    # Write model file
+    list_covs_phi   <- set_covariates(data, formula_phi,   formula_phi_shared,   "phi")
     list_covs_theta <- set_covariates(data, formula_theta, formula_theta_shared, "theta")
-    list_covs_psi <- set_covariates(data, formula_psi, formula_psi_shared, "psi")
+    list_covs_psi   <- set_covariates(data, formula_psi,   formula_psi_shared,   "psi")
     model_code <- write_nimble_model(margs$phi, margs$theta, margs$psi,
-                                     margs$phi_shared, margs$theta_shared, margs$psi_shared,
-                                     M_cov_phi = list_covs_phi$M, M_cov_phi_shared = list_covs_phi$M_shared,
-                                     M_cov_theta = list_covs_theta$M, M_cov_theta_shared = list_covs_theta$M_shared,
-                                     M_cov_psi = list_covs_psi$M, M_cov_psi_shared = list_covs_psi$M_shared)
-    model_code <- paste0(model_code, collapse = "\n")
-    model_code <- str2lang(model_code)
-    
-    fit <- run_nimble(dat, inits, params, model_code,
-                      const, list_covs_phi, list_covs_theta, list_covs_psi,
+                                     margs$phi_shared,
+                                     margs$theta_shared,
+                                     margs$psi_shared,
+                                     M_cov_phi          = list_covs_phi$M,
+                                     M_cov_phi_shared   = list_covs_phi$M_shared,
+                                     M_cov_theta        = list_covs_theta$M,
+                                     M_cov_theta_shared = list_covs_theta$M_shared,
+                                     M_cov_psi          = list_covs_psi$M,
+                                     M_cov_psi_shared   = list_covs_psi$M_shared)
+    model_file <- tempfile()
+    writeLines(model_code, model_file)
+
+    # Run MCMC in NIMBLE
+    fit <- run_nimble(dat, const, inits, params, model_code, model_file,
                       n.chains = n.chains,
                       n.adapt  = n.adapt,
                       n.iter   = n.iter,

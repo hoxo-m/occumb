@@ -63,6 +63,46 @@ nimbleSummary <- function(samples, parameters = NULL) {
   out
 }
 
+#' Print a nimbleSummary object
+#'
+#' Prints a concise summary table (posterior mean, SD, quantiles, Rhat, n.eff, etc.)
+#' for a `nimbleSummary` object, along with a brief convergence message based on
+#' Rhat values when multiple chains are available.
+#'
+#' @param x A `nimbleSummary` object.
+#' @param digits Number of digits to round numeric results in the summary table.
+#' @param ... Unused (included for S3 method compatibility).
+#'
+#' @return The input object `x` (invisibly).
+#'
+#' @examples
+#' if (requireNamespace("coda", quietly = TRUE)) {
+#'   m1 <- coda::mcmc(matrix(rnorm(200), ncol = 2,
+#'                           dimnames = list(NULL, c("alpha", "beta"))))
+#'   m2 <- coda::mcmc(matrix(rnorm(200), ncol = 2,
+#'                           dimnames = list(NULL, c("alpha", "beta"))))
+#'   samples <- coda::as.mcmc.list(list(m1, m2))
+#'
+#'   vals <- c(
+#'     0, 1, -1.96, 0.025, 0, 0.975, 1.96, 1.01, 100, 0, 1,
+#'     -0.1, 0.9, -1.8, 0.05, -0.1, 0.85, 1.7, 1.02, 120, 0, 1
+#'   )
+#'   summary <- matrix(
+#'     vals,
+#'     nrow = 2, byrow = TRUE,
+#'     dimnames = list(
+#'       c("alpha", "beta"),
+#'       c("mean", "sd", "2.5%", "25%", "50%", "75%", "97.5%",
+#'         "Rhat", "n.eff", "overlap0", "f")
+#'     )
+#'   )
+#'
+#'   x <- list(summary = summary, samples = samples)
+#'   class(x) <- c("nimbleSummary", "jagsUI")
+#'   print(x)
+#' }
+#'
+#' @method print nimbleSummary
 #' @export
 print.nimbleSummary <- function(x, digits = 3, ...) {
   nchain <- coda::nchain(x$samples)
@@ -91,21 +131,48 @@ print.nimbleSummary <- function(x, digits = 3, ...) {
 
 #' Summarize a nimbleSummary object
 #'
-#' `summary()` method for objects returned by `nimbleSummary()`.
+#' `summary()` method for objects returned by nimbleSummary().
+#' It prints the summary table and returns it invisibly.
 #'
-#' @param object A `nimbleSummary` object.
-#' @param ... Unused.
-#' @return The summary matrix (invisibly). Printed for convenience.
-#' @export
+#' @param object A `nimbleSummary` object (as returned by nimbleSummary()).
+#' @param ... Unused. Included for S3 method compatibility.
+#'
+#' @return A numeric matrix of summary statistics (returned invisibly).
+#' Typically includes posterior mean, SD, quantiles, Rhat, n.eff, and related
+#' diagnostics (columns depend on how `object$summary` was created).
+#'
+#' @examples
+#' if (requireNamespace("coda", quietly = TRUE)) {
+#'   m1 <- coda::mcmc(matrix(rnorm(200), ncol = 2,
+#'     dimnames = list(NULL, c("alpha", "beta"))))
+#'   m2 <- coda::mcmc(matrix(rnorm(200), ncol = 2,
+#'     dimnames = list(NULL, c("alpha", "beta"))))
+#'   samples <- coda::as.mcmc.list(list(m1, m2))
+#'   sum_mat <- matrix(
+#'     c(0, 1, -1.96, 0.025, 0, 0.975, 1.96, 1.01, 100, 0, 1,
+#'       -0.1, 0.9, -1.8, 0.05, -0.1, 0.85, 1.7, 1.02, 120, 0, 1),
+#'     nrow = 2, byrow = TRUE,
+#'     dimnames = list(
+#'       c("alpha", "beta"),
+#'       c("mean", "sd", "2.5%", "25%", "50%", "75%", "97.5%",
+#'         "Rhat", "n.eff", "overlap0", "f")
+#'     )
+#'   )
+#'   x <- list(summary = sum_mat, samples = samples)
+#'   class(x) <- c("nimbleSummary", "jagsUI")
+#'   summary(x)
+#' }
+#'
 #' @method summary nimbleSummary
+#' @export
 summary.nimbleSummary <- function(object, ...) {
   print(object$summary)
   invisible(object$summary)
 }
 
 #------------------------------------------------------------------------------
-#Get names of parameters from an mcmc.list
-#If simplify = TRUE, also drop brackets/indices
+# Get names of parameters from an mcmc.list
+# If simplify = TRUE, also drop brackets/indices
 param_names <- function(mcmc_list, simplify = FALSE) {
   out <- coda::varnames(mcmc_list)
   if (simplify) out <- strip_params(out, unique = TRUE)
@@ -113,7 +180,7 @@ param_names <- function(mcmc_list, simplify = FALSE) {
 }
 
 #------------------------------------------------------------------------------
-#Match parameter name to scalar or array versions of parameter name
+# Match parameter name to scalar or array versions of parameter name
 match_params <- function(params, params_raw) {
   unlist(lapply(params, function(x) {
     if (x %in% params_raw) return(x)
@@ -130,8 +197,8 @@ strip_params <- function(params_raw, unique = FALSE) {
 }
 
 #------------------------------------------------------------------------------
-#Identify which columns in mcmc.list object correspond to a given
-#parameter name (useful for non-scalar parameters)
+# Identify which columns in mcmc.list object correspond to a given
+# parameter name (useful for non-scalar parameters)
 which_params <- function(param, params_raw) {
   params_strip <- strip_params(params_raw)
   if (!param %in% params_strip) {
@@ -141,7 +208,7 @@ which_params <- function(param, params_raw) {
 }
 
 #------------------------------------------------------------------------------
-#Reorder output samples from coda to match input parameter order
+# Reorder output samples from coda to match input parameter order
 order_samples <- function(samples, params) {
   tryCatch({
     matched <- match_params(params, param_names(samples))
@@ -156,8 +223,8 @@ order_samples <- function(samples, params) {
 }
 
 #------------------------------------------------------------------------------
-#Process output master function
-#To generate backwards-compatible jagsUI output
+# Process output master function
+# To generate backwards-compatible jagsUI output
 process_output <- function(mcmc_list, coda_only = NULL, DIC, quiet = FALSE) {
   if (!quiet) {
     cat("Calculating statistics.......", "\n")
@@ -189,7 +256,7 @@ process_output <- function(mcmc_list, coda_only = NULL, DIC, quiet = FALSE) {
 
 
 #------------------------------------------------------------------------------
-#Fill an array from vector using matching array indices
+# Fill an array from vector using matching array indices
 fill_array <- function(data_vector, indices) {
   out <- array(NA, dim = apply(indices, 2, max))
   out[indices] <- data_vector
@@ -198,7 +265,7 @@ fill_array <- function(data_vector, indices) {
 
 
 #------------------------------------------------------------------------------
-#Extract the posterior of a parameter and organize it into an array
+# Extract the posterior of a parameter and organize it into an array
 get_posterior_array <- function(parameter, samples) {
 
   tryCatch({
@@ -227,7 +294,7 @@ get_posterior_array <- function(parameter, samples) {
 
 
 #------------------------------------------------------------------------------
-#Get sims list
+# Get sims list
 sims_list <- function(samples) {
   params <- param_names(samples)
   sapply(strip_params(params, unique = TRUE), get_posterior_array,
@@ -236,7 +303,7 @@ sims_list <- function(samples) {
 
 
 #------------------------------------------------------------------------------
-#Extract stats for a parameter and organize into appropriately-sized array
+# Extract stats for a parameter and organize into appropriately-sized array
 get_stat_array <- function(parameter, stat, model_summary) {
 
   tryCatch({
@@ -261,7 +328,7 @@ get_stat_array <- function(parameter, stat, model_summary) {
 
 
 #------------------------------------------------------------------------------
-#Compile all stats for all parameters into list of lists
+# Compile all stats for all parameters into list of lists
 all_stat_arrays <- function(summary_stats, coda_only) {
 
   stat_array_list <- function(stat, summary_stats) {
@@ -299,12 +366,12 @@ stat_summary_table <- function(stats, coda_only) {
 
 
 #------------------------------------------------------------------------------
-#Determine if 95% credible interval of parameter overlaps 0
+# Determine if 95% credible interval of parameter overlaps 0
 overlap_0 <- function(lower, upper) {
   as.numeric(!(lower <= 0) == (upper < 0))
 }
 
-#Calculate proportion of posterior with same sign as mean
+# Calculate proportion of posterior with same sign as mean
 calc_f <- function(values, mn) {
   if (mn >= 0) return(mean(values >= 0, na.rm = TRUE))
   mean(values < 0, na.rm = TRUE)
@@ -335,7 +402,7 @@ calc_neff <- function(mcmc_list) {
   s2 <- apply(mcmc_mat, 2, stats::var, na.rm = TRUE)
   W <- mean(s2)
 
-  #Non-degenerate case
+  # Non-degenerate case
   if (is.na(W)) {
     n_eff <- NA
   } else if ((W > 1.e-8) && (nchain > 1)) {
@@ -343,14 +410,14 @@ calc_neff <- function(mcmc_list) {
     sig2hat <- ((niter - 1) * W + B) / niter
     n_eff <- round(nchain * niter * min(sig2hat / B, 1), 0)
   } else {
-    #Degenerate case
+    # Degenerate case
     n_eff <- 1
   }
   n_eff
 }
 
-#Calculate series of statistics for one parameter
-#Takes an mcmc.list as input
+# Calculate series of statistics for one parameter
+# Takes an mcmc.list as input
 calc_param_stats <- function(mcmc_list, coda_only) {
   stopifnot(has_one_parameter(mcmc_list))
   values <- unlist(mcmc_list)
@@ -389,8 +456,8 @@ calc_param_stats <- function(mcmc_list, coda_only) {
 
 
 #------------------------------------------------------------------------------
-#Calculate statistics for all parameters in posterior and organize into matrix
-#Takes mcmc.list as input
+# Calculate statistics for all parameters in posterior and organize into matrix
+# Takes mcmc.list as input
 calc_stats <- function(mcmc_list, coda_only = NULL) {
   params <- param_names(mcmc_list)
   coda_only <- strip_params(params) %in% coda_only
@@ -404,7 +471,7 @@ calc_stats <- function(mcmc_list, coda_only = NULL) {
 
 
 #------------------------------------------------------------------------------
-#Calculate pD and DIC from deviance if it exists in output samples
+# Calculate pD and DIC from deviance if it exists in output samples
 calc_DIC <- function(samples, DIC) {
   if (!DIC || !("deviance" %in% param_names(samples))) {
     return(NULL)
@@ -420,9 +487,9 @@ calc_DIC <- function(samples, DIC) {
 }
 
 #------------------------------------------------------------------------------
-#Extract index values inside brackets from a non-scalar parameter
-#param is the "base" name of the parameter and params_raw is a vector of
-#strings that contain brackets
+# Extract index values inside brackets from a non-scalar parameter
+# param is the "base" name of the parameter and params_raw is a vector of
+# strings that contain brackets
 get_inds <- function(param, params_raw) {
   inds_raw <- sub(paste(param, "[", sep = ""), "", params_raw, fixed = TRUE)
   inds_raw <- sub("]", "", inds_raw, fixed = TRUE)

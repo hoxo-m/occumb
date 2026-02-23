@@ -68,7 +68,9 @@ standard deviation of species-specific parameters.}
 
 \item{parallel}{If TRUE, run MCMC chains in parallel on multiple CPU cores.}
 
-\item{engine}{description}
+\item{engine}{Character string specifying the MCMC backend used for model
+fitting. Either \code{"JAGS"} (default; via \code{\link[jagsUI]{jags}()}) or
+\code{"NIMBLE"} (via the \pkg{nimble} package).}
 
 \item{...}{Additional arguments passed to \code{\link[jagsUI]{jags}()} function.}
 }

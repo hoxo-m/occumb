@@ -1,81 +1,84 @@
-run_nimble <- function(data, inits = NULL, parameters.to.save, model.file,
-                       const, list_covs_phi, list_covs_theta, list_covs_psi,
-                       n.chains, n.adapt = NULL, n.iter, n.burnin = 0, n.thin = 1,
-                       modules = c("glm"), factories = NULL, parallel = FALSE,
-                       n.cores = NULL, DIC = TRUE, store.data = FALSE, codaOnly = FALSE,
-                       seed = NULL, bugs.format = FALSE, verbose = TRUE, ...) {
-  dat <- data
-  len_m_phi   <- length(dat$m_phi)
-  len_m_theta <- length(dat$m_theta)
-  len_m_psi   <- length(dat$m_psi)
-  pad2 <- function(x) if (length(x) == 1L) c(x, x) else x
-  dat$m_phi   <- pad2(dat$m_phi)
-  dat$m_theta <- pad2(dat$m_theta)
-  dat$m_psi   <- pad2(dat$m_psi)
-  params <- parameters.to.save
-  model_code <- model.file
-
+run_nimble <- function(data, const, inits, params, model_code_strings, model_file,
+                       n.chains, n.iter, n.burnin, n.thin, parallel, ...) {
+  attach_nimble_package()
+  
+  # Validate arguments
+  # store.data
+  # seed
+  model_code <- to_model_code(model_code_strings)
+  n.cores <- list(...)$n.cores
+  verbose <- list(...)$verbose
+  if (!is.null(verbose)) {
+    verbose_old <- nimble::getNimbleOption("verbose")
+    nimble::nimbleOptions(verbose = verbose)
+    on.exit(nimble::nimbleOptions(verbose = verbose_old), add = TRUE)
+    if (verbose == FALSE) {
+      progress_bar_old <- nimble::getNimbleOption("MCMCprogressBar")
+      nimble::nimbleOptions(MCMCprogressBar = FALSE)
+      on.exit(nimble::nimbleOptions(MCMCprogressBar = progress_bar_old), add = TRUE)
+    }
+  }
+  
+  # Set constants
+  const_nimble <- set_const_nimble(const, data)
+  
+  # Set data list
+  data_nimble <- set_data_nimble(data)
+  
+  # Set initial values
   body <- body(inits)
-  n_rho <- as.integer(dat$M * (dat$M - 1) / 2)
+  n_rho <- as.integer(data$M * (data$M - 1) / 2)
   body[[2]][names(body[[2]]) == "rho"][[1]] <- substitute(double(n), list(n = n_rho))
   body(inits) <- body
 
   # Run MCMC in NIMBLE
-  const_nimble <- c(
-    const[c("I", "J", "K", "N")],
-    dat[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared",
-          "m_phi", "m_theta", "m_psi", "prior_prec", "prior_ulim")],
-    M_phi = len_m_phi, M_theta = len_m_theta, M_psi = len_m_psi)
-  const_nimble$rho_index <- make_rho_index(const_nimble$M)
-  const_nimble <- const_nimble[!is.na(names(const_nimble))]
-  dat_nimble <- dat[c("y", "cov_phi", "cov_theta", "cov_psi",
-                      "cov_phi_shared", "cov_theta_shared", "cov_psi_shared")]
-  dat_nimble <- dat_nimble[!is.na(names(dat_nimble))]
   start_time <- Sys.time()
   if (parallel) {
     fit <- run_nimble_parallel(code = model_code, const = const_nimble,
-                               data = dat_nimble, inits = inits,
+                               data = data_nimble, inits = inits,
                                monitors = params,
-                               n.iter = n.iter, n.burnin = n.burnin,
-                               n.thin = n.thin, n.chains = n.chains,
+                               n.iter, n.burnin, n.thin, n.chains,
                                n.cores = n.cores)
   } else {
-    fit <- nimble::nimbleMCMC(code = model_code, constants = const_nimble,
-                              data = dat_nimble, inits = inits,
-                              monitors = params,
-                              thin = n.thin, niter = n.iter, nburnin = n.burnin,
-                              nchains = n.chains, WAIC = FALSE, ...)
+    fit <- run_nimble_model(seed, code = model_code, const = const_nimble, 
+                            data = data_nimble, inits = inits,
+                            monitors = params,
+                            n.iter, n.burnin, n.thin, n.chains)
   }
   elapsed_mins <- round(as.numeric(Sys.time() - start_time, units = "mins"),
                         digits = 3)
-  message("Summarizing MCMC samples...")
+  nimble::messageIfVerbose("Summarizing MCMC samples...")
   fit <- nimbleSummary(fit)
-  message("Finished")
+  nimble::messageIfVerbose("Finished")
   rownames(fit$summary) <- gsub(pattern = "\\s", replacement = "",
                                 rownames(fit$summary))
   fit$parallel <- parallel
   fit$parameters <- params
   fit$model <- model_code
-  # fit$modfile
+  fit$modfile <- model_file
   fit$run.date <- start_time
   fit$mcmc.info$n.burnin <- n.burnin
   fit$mcmc.info$n.thin <- n.thin
   fit$mcmc.info$elapsed.mins <- elapsed_mins
 
-  fit 
+  fit
 }
 
 run_nimble_parallel <- function(code, const, data, inits, monitors,
                                 n.iter, n.burnin, n.thin, n.chains, n.cores) {
   if (!requireNamespace("parallel", quietly = TRUE)) {
-    stop("Package 'parallel' is required for this function. Please install it.", call. = FALSE)
+    stop("Package 'parallel' is required. Please install it.", call. = FALSE)
   }
-  if (is.null(n.cores)) n.cores <- parallel::detectCores()
-  n.cores <- min(n.cores, n.chains)
+  if (is.null(n.cores)) {
+    n.cores <- parallel::detectCores()
+  }
+  if (n.chains < n.cores) {
+    n.cores <- n.chains
+  }
   cluster <- parallel::makeCluster(n.cores)
   parallel::clusterEvalQ(cluster, library(nimble))
   results <- parallel::parLapply(cl = cluster, X = seq_len(n.chains),
-                                 fun = run_nimble_MCMC, code = code,
+                                 fun = run_nimble_model, code = code,
                                  const = const,
                                  data = data, inits = inits,
                                  monitors = monitors,
@@ -86,18 +89,47 @@ run_nimble_parallel <- function(code, const, data, inits, monitors,
   results
 }
 
-run_nimble_MCMC <- function(seed, code, const, data, inits, monitors,
-                            n.iter, n.burnin, n.thin, n.chains) {
+run_nimble_model <- function(seed, code, const, data, inits, monitors,
+                             n.iter, n.burnin, n.thin, n.chains) {
   
-  model <- nimble::nimbleModel(code = code, constants = const, data = data,
-                               inits = inits())
+  model  <- nimble::nimbleModel(code = code, constants = const, data = data,
+                                inits = inits())
   Cmodel <- nimble::compileNimble(model)
-  MCMC <- nimble::buildMCMC(Cmodel, monitors = monitors)
-  CMCMC <- nimble::compileNimble(MCMC)
+  conf   <- nimble::configureMCMC(Cmodel, monitors = monitors, print = FALSE)
+  conf$replaceSamplers(target = "Mu", type = "RW_block", silent = TRUE)
+  inds_r <- find_sampler_indices_fast(conf, target = "r")
+  conf$removeSamplers(ind = inds_r)
+  for (j in seq_len(const$J)) {
+    for (k in seq_len(const$K)) {
+      target <- sprintf("r[1:%d, %d, %d]", const$I, j, k)
+      conf$addSampler(target = target, type = "RW_block", silent = TRUE)
+    }
+  }
+  MCMC   <- nimble::buildMCMC(conf)
+  CMCMC  <- nimble::compileNimble(MCMC, project = Cmodel)
   result <- nimble::runMCMC(CMCMC, niter = n.iter, nburnin = n.burnin,
-                            thin = n.thin, nchains = n.chains, inits = inits,
-                            setSeed = seed, WAIC = FALSE)
+                            thin = n.thin, nchains = n.chains, inits = inits)
   result
+}
+
+#' Find sampler indices (fast)
+#'
+#' For a \code{\link[nimble]{MCMCconf}} object, return the indices of samplers in
+#' \code{conf$getSamplers()} whose \code{$target} corresponds to the specified node(s)
+#' (e.g., \code{"z"} matches targets like \code{"z[1]"}, \code{"z[2]"}, ...).
+#'
+#' This function provides a fast alternative to \code{conf$findSamplersOnNodes()},
+#' which can be slow for large target parameters.
+#'
+#' @param conf A \code{\link[nimble]{MCMCconf}} object from the \pkg{nimble} package.
+#' @param target A parameter name (character string).
+#' @return An integer vector of indices into \code{conf$getSamplers()}.
+find_sampler_indices_fast <- function(conf, target) {
+  all_samplers <- conf$getSamplers()
+  all_targets <- vapply(all_samplers, function(s) s$target, character(1L))
+  prefix <- paste0(target, "[")
+  inds <- which(startsWith(all_targets, prefix))
+  inds
 }
 
 # Auto-generate JAGS model code
@@ -340,7 +372,7 @@ write_nimble_model <- function(phi, theta, psi,
       }
       model <- c(model,
                  paste0("        logit(psi[i]) <- ", term1, " + ", term2))
-  
+
     } else if (psi == "ij") {
       if (M_cov_psi == 1) {
         term1 <- "gamma[i, 1] * cov_psi[j, 1]"
@@ -407,6 +439,45 @@ write_nimble_model <- function(phi, theta, psi,
   model
 }
 
+attach_nimble_package <- function() {
+  if (!requireNamespace("nimble", quietly = TRUE)) {
+    stop("Package 'nimble' is required. Please install it.", call. = FALSE)
+  }
+  
+  is_attached <- ("package:nimble" %in% search())
+  if (!is_attached) {
+    attachNamespace("nimble")
+  }
+}
+
+to_model_code <- function(model_code_strings) {
+  model_code <- paste0(model_code_strings, collapse = "\n")
+  model_code <- str2lang(model_code)
+  model_code <- nimble::nimbleCode(model_code)
+  model_code
+}
+
+set_const_nimble <- function(const, data) {
+  # Original lengths before padding with a dummy value
+  len_m_phi   <- length(data$m_phi)
+  len_m_theta <- length(data$m_theta)
+  len_m_psi   <- length(data$m_psi)
+  
+  const_nimble <- c(
+    const[c("I", "J", "K", "N")],
+    data[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared",
+           "m_phi", "m_theta", "m_psi", "prior_prec", "prior_ulim")],
+    M_phi = len_m_phi, M_theta = len_m_theta, M_psi = len_m_psi)
+  const_nimble$m_phi   <- pad_dummy_value(data$m_phi)
+  const_nimble$m_theta <- pad_dummy_value(data$m_theta)
+  const_nimble$m_psi   <- pad_dummy_value(data$m_psi)
+  const_nimble$rho_index <- make_rho_index(const_nimble$M)
+  
+  # Drop elements with NA names. These correspond to M_*_shared entries missing from data.
+  const_nimble <- const_nimble[!is.na(names(const_nimble))]
+  const_nimble
+}
+
 make_rho_index <- function(M) {
   index <- matrix(0L, M, M)
   ind <- 1L
@@ -417,4 +488,20 @@ make_rho_index <- function(M) {
     }
   }
   index
+}
+
+set_data_nimble <- function(data) {
+  data_nimble <- data[c("y", "cov_phi", "cov_theta", "cov_psi",
+                        "cov_phi_shared", "cov_theta_shared", "cov_psi_shared")]
+  # Drop elements with NA names. These correspond to cov_*_shared entries missing from data.
+  data_nimble <- data_nimble[!is.na(names(data_nimble))]
+  data_nimble
+}
+
+pad_dummy_value <- function(x, dummy_value = -999) {
+  if (length(x) == 1L) {
+    c(x, dummy_value)
+  } else {
+    x
+  }
 }
