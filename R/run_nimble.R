@@ -1,3 +1,41 @@
+#' Run MCMC with the NIMBLE backend (internal)
+#'
+#' Internal worker used to fit the model with the NIMBLE engine. This function
+#' builds a NIMBLE model, runs MCMC (optionally in parallel), summarizes the
+#' posterior samples, and returns an object compatible with the
+#' \pkg{jagsUI}-style fit object.
+#'
+#' @param data A named list containing the observed data and covariates for JAGS.
+#' @param const A named list of model constants for JAGS.
+#' @param inits A function that returns a named list of initial values for the
+#'   model parameters (one set of initial values will be generated per chain).
+#' @param params Character vector of node names to monitor.
+#' @param model_code_strings Character vector of NIMBLE model code lines to be
+#'   converted to \code{nimbleCode}.
+#' @param model_file A string identifying the model file (kept for compatibility
+#'   with other engines); stored in the returned object.
+#' @param n.chains Number of MCMC chains.
+#' @param n.iter Total number of MCMC iterations per chain.
+#' @param n.burnin Number of burn-in iterations.
+#' @param n.thin Thinning interval.
+#' @param parallel Logical; if \code{TRUE}, run chains in parallel using the
+#'   \pkg{parallel} package.
+#' @param ... Additional control arguments:
+#'   \describe{
+#'     \item{\code{seed}}{See \code{nimble::runMCMC(setSeed = ...)}. 
+#'       \code{FALSE}: no seeding; \code{TRUE}: seed chain i with i;
+#'       numeric vector (\code{length = n.chains}): per-chain seeds.}
+#'     \item{\code{n.cores}}{Number of worker processes when \code{parallel=TRUE}.
+#'       Defaults to \code{parallel::detectCores()}.}
+#'     \item{\code{store.data}}{Logical; if \code{TRUE}, store the input
+#'       \code{data} and generated initial values in the returned object.}
+#'     \item{\code{verbose}}{Logical; if not \code{NULL}, temporarily set
+#'       \code{nimble} options \code{verbose} and \code{MCMCprogressBar}
+#'       accordingly during execution.}
+#'   }
+#'
+#' @return
+#' \pkg{jagsUI}-style fit object.
 run_nimble <- function(data, const, inits, params, model_code_strings, model_file,
                        n.chains, n.iter, n.burnin, n.thin, parallel, ...) {
   attach_nimble_package()
@@ -516,9 +554,14 @@ set_inits_nimble <- function(inits, seed, n.chains, n_rho) {
   } else if (isTRUE(seed)) {
     seeds <- seq_len(n.chains)
   } else if (is.numeric(seed) && length(seed) == n.chains) {
+    if (length(unique(seed)) < n.chains) {
+      warning("'seed' has duplicates; some chains may be identical.", call. = FALSE)
+    }
     seeds <- seed
+  } else if (is.numeric(seed) && length(seed) == 1L) {
+    stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains.", call. = FALSE)
   } else {
-    stop()
+    stop("Invalid 'seed'. See nimble::runMCMC(setSeed = ...).", call. = FALSE)
   }
   inits_nimble <- lapply(seeds, function(s) {
     set.seed(s)
@@ -569,7 +612,7 @@ get_rng_name <- function() {
 }
 
 set_rng <- function(rng_name) {
-  # rng_name: e.g. "base:Mersenne-Twister"
+  # rng_name: e.g. "base::Mersenne-Twister"
   split <- strsplit(rng_name, "::")[[1]]
   package <- split[1]
   rng_kind <- split[2]
@@ -584,7 +627,7 @@ set_rng <- function(rng_name) {
     dqrng::dqRNGkind(rng_kind)
     dqrng::register_methods()
   } else {
-    warning()
+    warning(sprintf("Unsupported RNG '%s' (base/randtoolbox/dqrng).", rng_name), call. = FALSE)
   }
 }
 
