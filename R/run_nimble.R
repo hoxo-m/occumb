@@ -9,6 +9,7 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
   seed <- dots_arguments$seed
   stopifnot(is.null(seed) || is.logical(seed) || (is.numeric(seed) && length(seed) == n.chains))
   store.data <- dots_arguments$store.data
+  if (is.null(store.data)) store.data <- FALSE
   verbose <- dots_arguments$verbose
   if (!is.null(verbose)) {
     verbose_old <- nimble::getNimbleOption("verbose")
@@ -27,7 +28,8 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
   data_nimble <- set_data_nimble(data)
   
   # Set initial values
-  inits_nimble <- set_inits_nimble(inits, seed, n.chains, n_rho = max(const_nimble$rho))
+  n_rho <- max(const_nimble$rho)
+  inits_nimble <- set_inits_nimble(inits, seed, n.chains, n_rho)
 
   # Run MCMC in NIMBLE
   start_time <- Sys.time()
@@ -71,17 +73,27 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
                                  const = const, data = data, 
                                  monitors = monitors,
                                  n.iter = n.iter, n.burnin = n.burnin,
-                                 n.thin = n.thin, n.chains = 1L)
+                                 n.thin = n.thin, n.chains = 1L, 
+                                 parallel = TRUE)
   parallel::stopCluster(cl = cluster)
 
   results
 }
 
 run_nimble_model <- function(inits, code, const, data, monitors,
-                             n.iter, n.burnin, n.thin, n.chains) {
-  
+                             n.iter, n.burnin, n.thin, n.chains, 
+                             parallel = FALSE) {
+  if (parallel) {
+    seed  <- inits$.RNG.seed
+    set_rng(inits$.RNG.name)
+    inits <- inits[ls(inits)]
+  } else {
+    seed  <- vapply(inits, function(x) x$.RNG.seed, FUN.VALUE = numeric(1L))
+    set_rng(inits[[1]]$.RNG.name)
+    inits <- lapply(inits, function(x) x[ls(x)])
+  }
   model  <- nimble::nimbleModel(code = code, constants = const, data = data,
-                                inits = inits[[1]])
+                                inits = inits[[1L]])
   Cmodel <- nimble::compileNimble(model)
   conf   <- nimble::configureMCMC(Cmodel, monitors = monitors, print = FALSE)
   conf$replaceSamplers(target = "Mu", type = "RW_block", silent = TRUE)
@@ -96,7 +108,8 @@ run_nimble_model <- function(inits, code, const, data, monitors,
   MCMC   <- nimble::buildMCMC(conf)
   CMCMC  <- nimble::compileNimble(MCMC, project = Cmodel)
   result <- nimble::runMCMC(CMCMC, niter = n.iter, nburnin = n.burnin,
-                            thin = n.thin, nchains = n.chains, inits = inits)
+                            thin = n.thin, nchains = n.chains, inits = inits,
+                            setSeed = seed)
   result
 }
 
@@ -494,12 +507,12 @@ pad_dummy_value <- function(x, dummy_value = -999) {
   }
 }
 
-set_inits_nimble <- function(inits, seed, n.chains, n_rho, store.data = FALSE) {
+set_inits_nimble <- function(inits, seed, n.chains, n_rho) {
   if (is.null(seed)) {
-    seeds <- floor(stats::runif(n.chains, 1, 1e+05))
+    seeds <- floor(stats::runif(n.chains, min = 1, max = 1e+05))
   } else if (isFALSE(seed)) {
     set.seed(NULL)
-    seeds <- floor(stats::runif(n.chains, 1, 1e+05))
+    seeds <- floor(stats::runif(n.chains, min = 1, max = 1e+05))
   } else if (isTRUE(seed)) {
     seeds <- seq_len(n.chains)
   } else if (is.numeric(seed) && length(seed) == n.chains) {
@@ -511,13 +524,8 @@ set_inits_nimble <- function(inits, seed, n.chains, n_rho, store.data = FALSE) {
     set.seed(s)
     i <- inits()
     i$rho <- double(n_rho)
-    i
+    append(i, list(.RNG.name = get_rng_name(), .RNG.seed = s))
   })
-  if (store.data) {
-    inits_nimble <- mapply(function(i, s) {
-      append(i, c(.RNG.name = get_rng_name(), .RNG.seed = s))
-    }, inits_nimble, seeds, SIMPLIFY = FALSE)
-  }
   inits_nimble
 }
 
@@ -528,6 +536,22 @@ get_rng_name <- function() {
     return(paste0("base::", kind))
   }
 
+  # --- randtoolbox ---
+  # Note: Example of switching RNG to 'randtoolbox' (and restoring it):
+  # randtoolbox::set.generator("WELL", version = "19937a")
+  # RNGkind()
+  # randtoolbox::set.generator("default")
+  if (requireNamespace("randtoolbox", quietly = TRUE)) {
+    desc <- tryCatch(randtoolbox::get.description(), error = function(e) NULL)
+    if (!is.null(desc)) {
+      kind <- desc$name
+      params <- desc$parameters
+      params <- mapply(function(n, v) sprintf("%s='%s'", n, v), names(params), params)
+      params <- paste0(params, collapse = ",")
+      return(sprintf("randtoolbox::%s:%s", kind, params))
+    }
+  }
+  
   # --- dqrng ---
   # Note: Example of switching RNG to 'dqrng' (and restoring it):
   # dqrng::dqRNGkind("Xoshiro256++")
@@ -541,19 +565,27 @@ get_rng_name <- function() {
     }
   }
 
-  # --- randtoolbox ---
-  # Note: Example of switching RNG to 'randtoolbox' (and restoring it):
-  # randtoolbox::set.generator("WELL", version = "19937a")
-  # RNGkind()
-  # randtoolbox::set.generator("default")
-  if (requireNamespace("randtoolbox", quietly = TRUE)) {
-    kind <- tryCatch(randtoolbox::get.description()$name, error = function(e) NULL)
-    if (is.null(kind)) {
-      return(paste0("randtoolbox::", kind))
-    }
-  }
-
   "base::user-supplied"
+}
+
+set_rng <- function(rng_name) {
+  # rng_name: e.g. "base:Mersenne-Twister"
+  split <- strsplit(rng_name, "::")[[1]]
+  package <- split[1]
+  rng_kind <- split[2]
+  if (package == "base") {
+    RNGkind(rng_kind)
+  } else if (package == "randtoolbox") {
+    split_kind <- strsplit(rng_kind, ":")[[1]]
+    name <- split_kind[1]
+    parameters <- eval(parse(text = sprintf("c(%s)",  split_kind[2])))
+    randtoolbox::set.generator(name, parameters)
+  } else if (package == "dqrng") {
+    dqrng::dqRNGkind(rng_kind)
+    dqrng::register_methods()
+  } else {
+    warning()
+  }
 }
 
 make_jagsui_compatible <- function(fit, env = parent.frame()) {
@@ -571,7 +603,7 @@ make_jagsui_compatible <- function(fit, env = parent.frame()) {
     fit$mcmc.info$elapsed.mins <- elapsed_mins
     if (store.data) {
       fit$data  <- data
-      fit$inits <- set_inits_nimble(inits, seed, n.chains, n_rho = max(const_nimble$rho), store.data)
+      fit$inits <- inits_nimble
     }
     fit
   })
