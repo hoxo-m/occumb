@@ -22,7 +22,7 @@
 #'   \pkg{parallel} package.
 #' @param ... Additional control arguments:
 #'   \describe{
-#'     \item{\code{seed}}{See \code{nimble::runMCMC(setSeed = ...)}. 
+#'     \item{\code{seed}}{See \code{nimble::runMCMC(setSeed = ...)}.
 #'       \code{FALSE}: no seeding; \code{TRUE}: seed chain i with i;
 #'       numeric vector (\code{length = n.chains}): per-chain seeds.}
 #'     \item{\code{n.cores}}{Number of worker processes when \code{parallel=TRUE}.
@@ -34,8 +34,7 @@
 #'       accordingly during execution.}
 #'   }
 #'
-#' @return
-#' \pkg{jagsUI}-style fit object.
+#' @return \pkg{jagsUI}-style fit object.
 run_nimble <- function(data, const, inits, params, model_code_strings, model_file,
                        n.chains, n.iter, n.burnin, n.thin, parallel, ...) {
   attach_nimble_package()
@@ -62,13 +61,13 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
       nimble::nimbleOptions(MCMCprogressBar = progress_bar_old)
     }, add = TRUE)
   }
-  
+
   # Set constants
   const_nimble <- set_const_nimble(const, data)
-  
+
   # Set data list
   data_nimble <- set_data_nimble(data)
-  
+
   # Set initial values
   n_rho <- max(const_nimble$rho)
   inits_nimble <- set_inits_nimble(inits, seed, n.chains, n_rho)
@@ -93,7 +92,7 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
   fit <- nimbleSummary(fit)
   fit <- make_jagsui_compatible(fit)
   nimble::messageIfVerbose("Finished")
-  
+
   fit
 }
 
@@ -106,7 +105,7 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
     n.cores <- detect_cores_omit_one()
     n.cores <- min(n.cores, n.chains)
     nimble::messageIfVerbose(sprintf("[Note] Automatically setting n.cores = %d.", n.cores))
-  } 
+  }
   if (n.chains < n.cores) {
     n.cores <- n.chains
     nimble::messageIfVerbose("[Note] 'n.cores' exceeds 'n.chains'; reducing 'n.cores' to 'n.chains'.")
@@ -115,10 +114,10 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
   parallel::clusterEvalQ(cluster, library(nimble))
   results <- parallel::parLapply(cl = cluster, X = inits,
                                  fun = run_nimble_model, code = code,
-                                 const = const, data = data, 
+                                 const = const, data = data,
                                  monitors = monitors,
                                  n.iter = n.iter, n.burnin = n.burnin,
-                                 n.thin = n.thin, n.chains = 1L, 
+                                 n.thin = n.thin, n.chains = 1L,
                                  parallel = TRUE)
   parallel::stopCluster(cl = cluster)
 
@@ -126,7 +125,7 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
 }
 
 run_nimble_model <- function(inits, code, const, data, monitors,
-                             n.iter, n.burnin, n.thin, n.chains, 
+                             n.iter, n.burnin, n.thin, n.chains,
                              parallel = FALSE) {
   if (parallel) {
     seed  <- inits$.RNG.seed
@@ -158,6 +157,11 @@ run_nimble_model <- function(inits, code, const, data, monitors,
   result
 }
 
+# TODO: The next NIMBLE release is expected to include the following change.
+# Once occumb depends on that version, stop using this function and switch back
+# to NIMBLE’s original function.
+# https://github.com/nimble-dev/nimble/pull/1614
+#
 #' Find sampler indices (fast)
 #'
 #' This function provides a fast alternative to \code{conf$findSamplersOnNodes()},
@@ -169,11 +173,11 @@ run_nimble_model <- function(inits, code, const, data, monitors,
 find_sampler_indices_fast <- function(conf, nodes) {
   samplerConfs <- conf$samplerConfs
   model <- conf$model
-  
-  if(length(samplerConfs) == 0) return(integer())
+
+  if (length(samplerConfs) == 0) return(integer())
   nodes <- model$expandNodeNames(nodes, returnScalarComponents = TRUE, sort = TRUE)
   samplerConfNodesList <- lapply(samplerConfs, function(sc) sc$targetAsScalar)
-  
+
   # Match requested nodes in the flattened node list and map matches back to sampler indices.
   samplerIndices <- 1:length(samplerConfs)
   samplerConfNodesLengths <- unlist(lapply(samplerConfNodesList, length))
@@ -495,7 +499,7 @@ attach_nimble_package <- function() {
   if (!requireNamespace("nimble", quietly = TRUE)) {
     stop("Package 'nimble' is required. Please install it.", call. = FALSE)
   }
-  
+
   is_attached <- ("package:nimble" %in% search())
   if (!is_attached) {
     attachNamespace("nimble")
@@ -514,7 +518,7 @@ set_const_nimble <- function(const, data) {
   len_m_phi   <- length(data$m_phi)
   len_m_theta <- length(data$m_theta)
   len_m_psi   <- length(data$m_psi)
-  
+
   const_nimble <- c(
     const[c("I", "J", "K", "N")],
     data[c("M", "M_phi_shared", "M_theta_shared", "M_psi_shared",
@@ -524,7 +528,7 @@ set_const_nimble <- function(const, data) {
   const_nimble$m_theta <- pad_dummy_value(data$m_theta)
   const_nimble$m_psi   <- pad_dummy_value(data$m_psi)
   const_nimble$rho_index <- make_rho_index(data$M)
-  
+
   # Drop elements with NA names. These correspond to M_*_shared entries missing from data.
   const_nimble <- const_nimble[!is.na(names(const_nimble))]
   const_nimble
@@ -608,7 +612,7 @@ get_rng_name <- function() {
       return(sprintf("randtoolbox::%s:%s", kind, params))
     }
   }
-  
+
   # --- dqrng ---
   # Note: Example of switching RNG to 'dqrng' (and restoring it):
   # dqrng::dqRNGkind("Xoshiro256++")
@@ -676,7 +680,7 @@ make_jagsui_compatible <- function(fit, env = parent.frame()) {
 
 to_occumb_nimble_model <- function(model_code_strings, const, data) {
   structure(
-    list(model_code_strings = model_code_strings, const = const, data = data), 
+    list(model_code_strings = model_code_strings, const = const, data = data),
     class = "occumb_nimble_model"
   )
 }
@@ -684,23 +688,23 @@ to_occumb_nimble_model <- function(model_code_strings, const, data) {
 #' @export
 print.occumb_nimble_model <- function(x, ...) {
   cat(crayon::bold("NIMBLE model:"), "\n")
-  for (i in seq_len(length(x$model_code_strings))) {
+  for (i in seq_alonglen(x$model_code_strings)) {
     cat(x$model_code_strings[i], "\n", sep = "")
   }
-  
+
   seq_depth <- apply(x$data$y, c(2, 3), sum)
   n_missing <- sum(is.na(seq_depth))
   reps_per_site <- apply(seq_depth, 1, function(x) sum(!is.na(x)))
   mean_seq_depth <- mean(seq_depth, na.rm = TRUE)
   sd_seq_depth <- stats::sd(seq_depth, na.rm = TRUE)
-  
+
   cat(crayon::bold("Sequence read counts:"), "\n")
   cat(sprintf(" Number of species, I = %d", x$const$I), "\n")
   cat(sprintf(" Number of sites, J = %d", x$const$J), "\n")
   cat(sprintf(" Maximum number of replicates per site, K = %d", x$const$K), "\n")
   cat(sprintf(" Number of missing observations = %d", n_missing), "\n")
-  cat(sprintf(" Number of replicates per site: %.2f (average), %.2f (sd)", 
+  cat(sprintf(" Number of replicates per site: %.2f (average), %.2f (sd)",
               mean(reps_per_site), stats::sd(reps_per_site)), "\n")
-  cat(sprintf(" Sequencing depth: %.1f (average), %.1f (sd)", 
+  cat(sprintf(" Sequencing depth: %.1f (average), %.1f (sd)",
               mean_seq_depth, sd_seq_depth), "\n")
 }
