@@ -44,11 +44,15 @@ run_nimble <- function(data, const, inits, params, model_code_strings, model_fil
   model_code <- to_model_code(model_code_strings)
   dots_arguments <- list(...)
   n.cores <- dots_arguments$n.cores
+  if (!is.null(n.cores)) n.cores <- as.integer(n.cores)
+  stopifnot(is.null(n.cores) || is.integer(n.cores))
   seed <- dots_arguments$seed
   stopifnot(is.null(seed) || is.logical(seed) || (is.numeric(seed) && length(seed) == n.chains))
   store.data <- dots_arguments$store.data
+  stopifnot(is.null(store.data) || is.logical(store.data))
   if (is.null(store.data)) store.data <- FALSE
   verbose <- dots_arguments$verbose
+  stopifnot(is.null(verbose) || is.logical(verbose))
   if (!is.null(verbose)) {
     verbose_old <- nimble::getNimbleOption("verbose")
     progress_bar_old <- nimble::getNimbleOption("MCMCprogressBar")
@@ -99,9 +103,11 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
     stop("Package 'parallel' is required. Please install it.", call. = FALSE)
   }
   if (is.null(n.cores)) {
+    nimble::messageIfVerbose("[Note] ")
     n.cores <- parallel::detectCores()
   }
   if (n.chains < n.cores) {
+    nimble::messageIfVerbose("[Note] ")
     n.cores <- n.chains
   }
   cluster <- parallel::makeCluster(n.cores)
@@ -135,11 +141,11 @@ run_nimble_model <- function(inits, code, const, data, monitors,
   Cmodel <- nimble::compileNimble(model)
   conf   <- nimble::configureMCMC(Cmodel, monitors = monitors, print = FALSE)
   conf$replaceSamplers(target = "Mu", type = "RW_block", silent = TRUE)
-  inds_r <- find_sampler_indices_fast(conf, target = "r")
+  inds_r <- find_sampler_indices_fast(conf, nodes = "r")
   conf$removeSamplers(ind = inds_r)
   for (j in seq_len(const$J)) {
     for (k in seq_len(const$K)) {
-      target <- sprintf("r[1:%d, %d, %d]", const$I, j, k)
+      target <- sprintf("r[, %d, %d]", j, k)
       conf$addSampler(target = target, type = "RW_block", silent = TRUE)
     }
   }
@@ -153,22 +159,28 @@ run_nimble_model <- function(inits, code, const, data, monitors,
 
 #' Find sampler indices (fast)
 #'
-#' For a \code{\link[nimble]{MCMCconf}} object, return the indices of samplers in
-#' \code{conf$getSamplers()} whose \code{$target} corresponds to the specified node(s)
-#' (e.g., \code{"z"} matches targets like \code{"z[1]"}, \code{"z[2]"}, ...).
-#'
 #' This function provides a fast alternative to \code{conf$findSamplersOnNodes()},
-#' which can be slow for large target parameters.
+#' which can be slow for large target samplers.
 #'
 #' @param conf A \code{\link[nimble]{MCMCconf}} object from the \pkg{nimble} package.
-#' @param target A parameter name (character string).
+#' @param nodes A parameter name (character string).
 #' @return An integer vector of indices into \code{conf$getSamplers()}.
-find_sampler_indices_fast <- function(conf, target) {
-  all_samplers <- conf$getSamplers()
-  all_targets <- vapply(all_samplers, function(s) s$target, character(1L))
-  prefix <- paste0(target, "[")
-  inds <- which(startsWith(all_targets, prefix))
-  inds
+find_sampler_indices_fast <- function(conf, nodes) {
+  samplerConfs <- conf$samplerConfs
+  model <- conf$model
+  
+  if(length(samplerConfs) == 0) return(integer())
+  nodes <- model$expandNodeNames(nodes, returnScalarComponents = TRUE, sort = TRUE)
+  samplerConfNodesList <- lapply(samplerConfs, function(sc) sc$targetAsScalar)
+  
+  # Match requested nodes in the flattened node list and map matches back to sampler indices.
+  samplerIndices <- 1:length(samplerConfs)
+  samplerConfNodesLengths <- unlist(lapply(samplerConfNodesList, length))
+  flatSamplerConfNodes <- unlist(samplerConfNodesList)
+  flatSamplerIndices <- rep.int(samplerIndices, times = samplerConfNodesLengths)
+  flatNodePositions <- unlist(lapply(nodes, function(n) which(n == flatSamplerConfNodes)))
+  matchedSamplerIndices <- flatSamplerIndices[flatNodePositions]
+  unique(matchedSamplerIndices)
 }
 
 # Auto-generate JAGS model code
@@ -555,13 +567,15 @@ set_inits_nimble <- function(inits, seed, n.chains, n_rho) {
     seeds <- seq_len(n.chains)
   } else if (is.numeric(seed) && length(seed) == n.chains) {
     if (length(unique(seed)) < n.chains) {
-      warning("'seed' has duplicates; some chains may be identical.", call. = FALSE)
+      nimble::messageIfVerbose("[Warning] 'seed' has duplicates; some chains may be identical.", call. = FALSE)
     }
     seeds <- seed
   } else if (is.numeric(seed) && length(seed) == 1L) {
-    stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains.", call. = FALSE)
+    # stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains.", call. = FALSE)
+    nimble::messageIfVerbose("[Note] ")
+    seeds <- seed + seq_len(n.chains) - 1
   } else {
-    stop("Invalid 'seed'. See nimble::runMCMC(setSeed = ...).", call. = FALSE)
+    stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains. See nimble::runMCMC(setSeed = ...).", call. = FALSE)
   }
   inits_nimble <- lapply(seeds, function(s) {
     set.seed(s)

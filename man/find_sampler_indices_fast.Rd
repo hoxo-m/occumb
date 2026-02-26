@@ -4,22 +4,17 @@
 \alias{find_sampler_indices_fast}
 \title{Find sampler indices (fast)}
 \usage{
-find_sampler_indices_fast(conf, target)
+find_sampler_indices_fast(conf, nodes)
 }
 \arguments{
 \item{conf}{A \code{\link[nimble]{MCMCconf}} object from the \pkg{nimble} package.}
 
-\item{target}{A parameter name (character string).}
+\item{nodes}{A parameter name (character string).}
 }
 \value{
 An integer vector of indices into \code{conf$getSamplers()}.
 }
 \description{
-For a \code{\link[nimble]{MCMCconf}} object, return the indices of samplers in
-\code{conf$getSamplers()} whose \code{$target} corresponds to the specified node(s)
-(e.g., \code{"z"} matches targets like \code{"z[1]"}, \code{"z[2]"}, ...).
-}
-\details{
 This function provides a fast alternative to \code{conf$findSamplersOnNodes()},
-which can be slow for large target parameters.
+which can be slow for large target samplers.
 }

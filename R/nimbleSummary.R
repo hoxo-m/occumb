@@ -12,7 +12,7 @@
 # In particular, this implementation is adapted from `nimbleSummary.R` included
 # in the R package "BPAbook" (e.g., BPAbook_0.0.1.tar.gz) available from the
 # above site. The companion site notes that the `nimbleSummary` function was
-# written by Ken Kellner to provide JAGS-UI-like summaries for NIMBLE output.
+# written by Ken Kellner to provide jagsUI-like summaries for NIMBLE output.
 #
 # Upstream licensing:
 # - The BPAbook package is distributed under the GNU General Public License
