@@ -103,12 +103,13 @@ run_nimble_parallel <- function(inits, code, const, data, monitors,
     stop("Package 'parallel' is required. Please install it.", call. = FALSE)
   }
   if (is.null(n.cores)) {
-    nimble::messageIfVerbose("[Note] ")
-    n.cores <- parallel::detectCores()
-  }
+    n.cores <- detect_cores_omit_one()
+    n.cores <- min(n.cores, n.chains)
+    nimble::messageIfVerbose(sprintf("[Note] Automatically setting n.cores = %d.", n.cores))
+  } 
   if (n.chains < n.cores) {
-    nimble::messageIfVerbose("[Note] ")
     n.cores <- n.chains
+    nimble::messageIfVerbose("[Note] 'n.cores' exceeds 'n.chains'; reducing 'n.cores' to 'n.chains'.")
   }
   cluster <- parallel::makeCluster(n.cores)
   parallel::clusterEvalQ(cluster, library(nimble))
@@ -571,8 +572,7 @@ set_inits_nimble <- function(inits, seed, n.chains, n_rho) {
     }
     seeds <- seed
   } else if (is.numeric(seed) && length(seed) == 1L) {
-    # stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains.", call. = FALSE)
-    nimble::messageIfVerbose("[Note] ")
+    nimble::messageIfVerbose("[Note] Expanding a single 'seed' to per-chain seeds (seed, seed+1, ...).")
     seeds <- seed + seq_len(n.chains) - 1
   } else {
     stop("Invalid 'seed'. Use TRUE or a numeric vector of length n.chains. See nimble::runMCMC(setSeed = ...).", call. = FALSE)
@@ -643,6 +643,14 @@ set_rng <- function(rng_name) {
   } else {
     warning(sprintf("Unsupported RNG '%s' (base/randtoolbox/dqrng).", rng_name), call. = FALSE)
   }
+}
+
+detect_cores_omit_one <- function() {
+  # detect cores (may be NA on some systems)
+  n <- parallel::detectCores()
+  if (is.na(n)) stop("Cannot auto-detect n.cores; please set n.cores")
+  # omit cores, but always keep at least one
+  max(1L, n - 1L)
 }
 
 make_jagsui_compatible <- function(fit, env = parent.frame()) {
