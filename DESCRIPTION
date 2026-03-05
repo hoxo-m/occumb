@@ -17,14 +17,20 @@ License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Suggests: 
     covr,
     rmarkdown,
     spelling,
     testthat (>= 3.0.0),
     tibble,
-    vdiffr
+    vdiffr,
+    nimble,
+    coda,
+    parallel,
+    dqrng,
+    randtoolbox,
+    DoE.base
 Config/testthat/edition: 3
 Imports: 
     stats,
@@ -39,10 +45,12 @@ Collate:
     'fish_raw.R'
     'get_posterior.R'
     'gof.R'
+    'nimbleSummary.R'
     'occumbData.R'
     'occumb.R'
     'plot.R'
     'predict.R'
+    'run_nimble.R'
     'show.R'
     'summary.R'
     'utility.R'
